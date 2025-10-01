@@ -8,6 +8,36 @@ import pandas as pd
 import argparse
 import subprocess
 
+# 项目所需的所有依赖项
+ALL_REQUIRED_DEPENDENCIES = [
+    'pandas>=1.3.0',
+    'numpy>=1.20.0',
+    'h5py>=3.0.0',
+    'tables>=3.6.0',
+    'requests>=2.25.0',
+    'beautifulsoup4>=4.9.0',
+    'plotly>=5.0.0',
+    'openpyxl>=3.0.0',
+    'xlsxwriter>=3.0.0',
+    'psutil>=5.8.0',
+    'akshare>=1.4.0',
+    'playwright>=1.20.0'
+]
+
+# 安装源配置
+PYPI_SOURCES = [
+    {
+        'name': '阿里源',
+        'index_url': 'https://mirrors.aliyun.com/pypi/simple',
+        'trusted_host': 'mirrors.aliyun.com'
+    },
+    {
+        'name': '清华源',
+        'index_url': 'https://pypi.tuna.tsinghua.edu.cn/simple/',
+        'trusted_host': 'pypi.tuna.tsinghua.edu.cn'
+    }
+]
+
 class QuantOrchestrator:
     QUANT_VIEW_PATH = "hdf5_data/quant_view.h5"
     CACHE_EXPIRE = 3600  # 1小时缓存有效期
@@ -295,29 +325,97 @@ class QuantOrchestrator:
             print(f"Error generating Excel report: {str(e)}")
             return None
 
+def set_pypi_source(source):
+    """设置PyPI源"""
+    try:
+        print(f"正在配置{source['name']}...")
+        # 设置index-url
+        subprocess.check_call(
+            [sys.executable, "-m", "pip", "config", "set", "global.index-url", source['index_url']]
+        )
+        # 设置trusted-host
+        subprocess.check_call(
+            [sys.executable, "-m", "pip", "config", "set", "install.trusted-host", source['trusted_host']]
+        )
+        print(f"{source['name']}配置成功")
+        return True
+    except Exception as e:
+        print(f"{source['name']}配置失败: {str(e)}")
+        return False
+
+def test_pypi_source(source):
+    """测试PyPI源是否可用"""
+    try:
+        print(f"正在测试{source['name']}连接...")
+        # 使用pip list命令测试连接
+        subprocess.check_call(
+            [sys.executable, "-m", "pip", "list", "--timeout", "5"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        print(f"{source['name']}连接成功")
+        return True
+    except Exception:
+        print(f"{source['name']}连接失败")
+        return False
+
 def check_dependencies():
-    """检查并安装依赖"""
-    required = ['h5py', 'numpy', 'pandas', 'xlsxwriter']
+    """检查并安装项目所有依赖"""
+    # 解析依赖名称（去掉版本号）
+    dep_names = [dep.split('>=')[0].split('==')[0] for dep in ALL_REQUIRED_DEPENDENCIES]
     missing = []
     
-    for dep in required:
+    # 检查每个依赖是否已安装
+    print("正在检查项目依赖...")
+    for dep_name, full_dep in zip(dep_names, ALL_REQUIRED_DEPENDENCIES):
         try:
-            __import__(dep)
+            __import__(dep_name)
+            print(f"✓ {full_dep} 已安装")
         except ImportError:
-            missing.append(dep)
+            missing.append(full_dep)
+            print(f"✗ {full_dep} 未安装")
     
+    # 如果有缺失的依赖，尝试安装
     if missing:
-        print(f"缺少以下依赖: {', '.join(missing)}")
-        if input("是否自动安装？(y/n)").lower() == 'y':
-            try:
-                subprocess.check_call([sys.executable, "-m", "pip", "install"] + missing)
-                print("依赖安装完成!")
-                return True
-            except Exception as e:
-                print(f"依赖安装失败: {str(e)}")
-                return False
-        return False
-    return True
+        print(f"共缺少 {len(missing)} 个依赖项")
+        
+        # 配置PyPI源
+        source_configured = False
+        for source in PYPI_SOURCES:
+            if set_pypi_source(source) and test_pypi_source(source):
+                source_configured = True
+                break
+        
+        if not source_configured:
+            print("警告：无法配置国内PyPI源，将使用默认源")
+        
+        # 安装缺失的依赖
+        print(f"正在安装缺失的依赖：{', '.join(missing)}")
+        try:
+            # 分批安装，避免单次安装过多包导致失败
+            batch_size = 5
+            for i in range(0, len(missing), batch_size):
+                batch = missing[i:i+batch_size]
+                print(f"正在安装第 {i//batch_size + 1} 批依赖：{', '.join(batch)}")
+                subprocess.check_call(
+                    [sys.executable, "-m", "pip", "install", "--upgrade"] + batch
+                )
+            
+            # 对于playwright，还需要安装浏览器
+            if any('playwright' in dep for dep in missing):
+                print("正在安装playwright浏览器...")
+                subprocess.check_call(
+                    [sys.executable, "-m", "playwright", "install"]
+                )
+            
+            print("所有依赖安装完成!")
+            return True
+        except Exception as e:
+            print(f"依赖安装失败: {str(e)}")
+            return False
+    else:
+        print("所有依赖项已安装完备")
+        return True
 
 def parse_arguments():
     """解析命令行参数"""
@@ -330,7 +428,7 @@ def parse_arguments():
 
 def main():
     """主函数"""
-    # 检查依赖
+    # 首先检查项目依赖是否完备
     if not check_dependencies():
         print("请手动安装依赖后重试")
         return
@@ -486,12 +584,12 @@ def main():
             elif choice == '4':
                 while True:
                     show_query_menu()
-                    query_choice = input("请选择查询类型: ").strip()
+                    query_choice = input("请输入选项: ").strip()
                     
                     if query_choice == '0':
                         break
-                    elif query_choice == '1' or query_choice == '2':
-                        # 基金基本信息或量化指标查询
+                    elif query_choice in ['1', '2']:
+                        # 查询基金基本信息或量化指标
                         while True:
                             modules = show_fund_query_menu()
                             module_choice = input("请选择模块: ").strip()

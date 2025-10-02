@@ -83,7 +83,7 @@
 
 ### 基本操作流程
 
-1. 运行程序：`python 2.Read_HDF5_Data.py`
+1. 运行程序：`python Read_HDF5_Data.py`
 2. 系统会自动检查并安装必要的依赖
 3. 在主菜单中选择所需功能：
 

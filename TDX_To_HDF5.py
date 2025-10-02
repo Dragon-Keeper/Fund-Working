@@ -290,13 +290,8 @@ def save_to_storage_streaming(data, stock_code, storage_file, current_file, tota
     temp_file = f"{storage_file}.tmp_{stock_code}_{int(time.time())}"
     
     try:
-        # 检查存储文件是否存在
-        file_exists = os.path.exists(storage_file)
-        
-        # 如果文件不存在，创建新文件
-        if not file_exists:
-            with h5py.File(storage_file, 'w') as hf:
-                pass  # 创建空文件
+        # 确保存储目录存在
+        os.makedirs(os.path.dirname(storage_file), exist_ok=True)
         
         # 使用临时文件写入数据
         with h5py.File(temp_file, 'w') as hf_temp:
@@ -326,30 +321,44 @@ def save_to_storage_streaming(data, stock_code, storage_file, current_file, tota
             # 添加属性
             group.attrs['record_count'] = len(data)
         
-        # 使用文件锁确保安全合并
+        # 使用文件锁确保安全合并，增强锁机制
         lock_file = f"{storage_file}.lock"
         lock_acquired = False
+        max_retries = 10  # 最大重试次数
+        retry_count = 0
         
         try:
             # 尝试获取文件锁
-            while not lock_acquired:
+            while not lock_acquired and retry_count < max_retries:
                 try:
                     with open(lock_file, 'x') as f:
+                        # 写入当前进程ID，便于调试
+                        f.write(str(os.getpid()))
                         lock_acquired = True
                 except FileExistsError:
-                    time.sleep(0.1)  # 等待10毫秒后重试
+                    retry_count += 1
+                    sleep_time = 0.2 * retry_count  # 指数退避策略
+                    time.sleep(sleep_time)  # 等待后重试
             
-            # 合并临时文件到主文件
-            with h5py.File(storage_file, 'a') as hf_main:
-                # 如果组已存在，先删除
-                if stock_code in hf_main:
-                    del hf_main[stock_code]
+            if not lock_acquired:
+                print(f"警告：无法获取文件锁，尝试直接写入 {stock_code}")
+                # 即使没有锁也尝试写入，但会增加错误风险
                 
-                # 从临时文件复制数据
-                with h5py.File(temp_file, 'r') as hf_temp:
-                    if stock_code in hf_temp:
-                        hf_main.copy(hf_temp[stock_code], hf_main)
-            
+            # 使用'a'模式直接打开主文件，避免重复创建
+            try:
+                with h5py.File(storage_file, 'a', libver='latest', swmr=False) as hf_main:
+                    # 如果组已存在，先删除
+                    if stock_code in hf_main:
+                        del hf_main[stock_code]
+                    
+                    # 从临时文件复制数据
+                    with h5py.File(temp_file, 'r') as hf_temp:
+                        if stock_code in hf_temp:
+                            hf_main.copy(hf_temp[stock_code], hf_main)
+                            hf_main.flush()  # 确保数据写入磁盘
+            except Exception as inner_e:
+                print(f"合并数据时出错: {inner_e}")
+                # 即使出错也继续，尝试下一个文件
         finally:
             # 释放文件锁
             if lock_acquired:
@@ -382,59 +391,83 @@ def batch_write_to_hdf5_optimized(storage_file, batch_data):
     if not batch_data:
         return
     
-    # 使用文件锁确保文件操作安全
+    # 确保存储目录存在
+    os.makedirs(os.path.dirname(storage_file), exist_ok=True)
+    
+    # 使用文件锁确保文件操作安全，增强锁机制
     lock_file = f"{storage_file}.lock"
     lock_acquired = False
+    max_retries = 10  # 最大重试次数
+    retry_count = 0
     
     try:
         # 尝试获取文件锁
-        while not lock_acquired:
+        while not lock_acquired and retry_count < max_retries:
             try:
                 with open(lock_file, 'x') as f:
+                    # 写入当前进程ID，便于调试
+                    f.write(str(os.getpid()))
                     lock_acquired = True
             except FileExistsError:
-                time.sleep(0.1)  # 等待10毫秒后重试
+                retry_count += 1
+                sleep_time = 0.2 * retry_count  # 指数退避策略
+                time.sleep(sleep_time)  # 等待后重试
         
-        # 检查存储文件是否存在
-        file_exists = os.path.exists(storage_file)
+        if not lock_acquired:
+            print(f"警告：无法获取文件锁，尝试直接批量写入数据")
+            # 即使没有锁也尝试写入，但会增加错误风险
         
-        # 如果文件不存在，创建新文件
-        if not file_exists:
-            with h5py.File(storage_file, 'w') as hf:
-                pass  # 创建空文件
-        
-        # 批量写入数据到HDF5文件
-        with h5py.File(storage_file, 'a') as hf:
-            for stock_code, records in batch_data.items():
-                # 如果组已存在，先删除
-                if stock_code in hf:
-                    del hf[stock_code]
-                
-                # 创建新组
-                group = hf.create_group(stock_code)
-                
-                # 将数据转换为numpy数组并存储
-                dates = np.array([record['date'] for record in records], dtype='S10')
-                opens = np.array([record['open'] for record in records], dtype='float32')
-                highs = np.array([record['high'] for record in records], dtype='float32')
-                lows = np.array([record['low'] for record in records], dtype='float32')
-                closes = np.array([record['close'] for record in records], dtype='float32')
-                amounts = np.array([record['amount'] for record in records], dtype='float64')
-                volumes = np.array([record['volume'] for record in records], dtype='float64')
-                prev_closes = np.array([record['prev_close'] for record in records], dtype='float32')
-                
-                # 创建数据集
-                group.create_dataset('date', data=dates)
-                group.create_dataset('open', data=opens)
-                group.create_dataset('high', data=highs)
-                group.create_dataset('low', data=lows)
-                group.create_dataset('close', data=closes)
-                group.create_dataset('amount', data=amounts)
-                group.create_dataset('volume', data=volumes)
-                group.create_dataset('prev_close', data=prev_closes)
-                
-                # 添加属性
-                group.attrs['record_count'] = len(records)
+        # 直接使用'a'模式打开HDF5文件，避免重复创建和打开
+        try:
+            with h5py.File(storage_file, 'a', libver='latest', swmr=False) as hf:
+                for stock_code, records in batch_data.items():
+                    # 如果组已存在，先删除
+                    if stock_code in hf:
+                        del hf[stock_code]
+                    
+                    # 创建新组
+                    group = hf.create_group(stock_code)
+                    
+                    # 将数据转换为numpy数组并存储
+                    dates = np.array([record['date'] for record in records], dtype='S10')
+                    opens = np.array([record['open'] for record in records], dtype='float32')
+                    highs = np.array([record['high'] for record in records], dtype='float32')
+                    lows = np.array([record['low'] for record in records], dtype='float32')
+                    closes = np.array([record['close'] for record in records], dtype='float32')
+                    amounts = np.array([record['amount'] for record in records], dtype='float64')
+                    volumes = np.array([record['volume'] for record in records], dtype='float64')
+                    prev_closes = np.array([record['prev_close'] for record in records], dtype='float32')
+                    
+                    # 创建数据集
+                    group.create_dataset('date', data=dates)
+                    group.create_dataset('open', data=opens)
+                    group.create_dataset('high', data=highs)
+                    group.create_dataset('low', data=lows)
+                    group.create_dataset('close', data=closes)
+                    group.create_dataset('amount', data=amounts)
+                    group.create_dataset('volume', data=volumes)
+                    group.create_dataset('prev_close', data=prev_closes)
+                    
+                    # 添加属性
+                    group.attrs['record_count'] = len(records)
+                    
+                hf.flush()  # 确保所有数据写入磁盘
+        except Exception as inner_e:
+            print(f"批量写入数据时出错: {inner_e}")
+            # 尝试使用备选方法
+            try:
+                # 备选方法：使用不同的文件模式尝试写入
+                with h5py.File(storage_file, 'a', libver='latest') as hf:
+                    # 简化操作，只写入第一个数据集
+                    first_stock = next(iter(batch_data.keys()))
+                    if first_stock in hf:
+                        del hf[first_stock]
+                    group = hf.create_group(first_stock)
+                    records = batch_data[first_stock]
+                    group.create_dataset('date', data=np.array([record['date'] for record in records], dtype='S10'))
+                    print(f"已尝试备选方法写入第一个数据集 {first_stock}")
+            except Exception as fallback_e:
+                print(f"备选方法也失败: {fallback_e}")
                 
     except Exception as e:
         print(f"批量写入数据时出错: {e}")
@@ -661,6 +694,18 @@ def main():
     # 设置源目录和存储文件
     source_dir = r"D:\SoftWare\TDX\vipdoc\ds\lday"
     storage_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "All_Fund_Data.h5")
+    
+    # 检查源目录是否存在，如果不存在则提示用户输入
+    while not os.path.isdir(source_dir):
+        print(f"警告：源目录 '{source_dir}' 不存在或无法访问")
+        user_input = input("请输入通达信基金数据文件(.day)所在目录路径，或输入'q'退出程序: ").strip()
+        if user_input.lower() == 'q':
+            print("退出程序")
+            return
+        elif user_input:
+            source_dir = user_input
+        else:
+            print("目录路径不能为空，请重新输入")
     
     # 获取用户输入的最小日期
     min_date = None

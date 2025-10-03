@@ -19,10 +19,51 @@ class QuantAnalyzer:
     def __new__(cls, *args, **kwargs):
         return quant_analysis.QuantAnalyzer(*args, **kwargs)
 
-# 定义空函数以保持程序结构完整性
+# 基金净值数据爬取函数
 def fetch_fund_nav_data():
     """基金净值爬取"""
-    pass
+    try:
+        # 导入并调用Fetch_Fund_Data模块的批量下载函数
+        import Fetch_Fund_Data
+        
+        # 获取总页数
+        total_pages = Fetch_Fund_Data.get_total_pages()
+        if total_pages <= 0:
+            print("无法获取总页数，操作取消")
+            return False
+        
+        print(f"\n检测到总页数: {total_pages} 页")
+        
+        # 批量获取基金数据
+        print("开始爬取基金数据，请稍候...")
+        all_fund_data = Fetch_Fund_Data.batch_fetch_fund_data(total_pages)
+        
+        if not all_fund_data:
+            print("未获取到任何基金数据")
+            return False
+        
+        # 验证数据
+        print("开始验证数据...")
+        if Fetch_Fund_Data.verify_fund_data(all_fund_data):
+            # 存储所有数据
+            hdf5_path = Fetch_Fund_Data.get_hdf5_path()
+            print(f"\n开始将数据存储到HDF5文件: {hdf5_path}")
+            Fetch_Fund_Data.store_fund_data_to_hdf5(all_fund_data, hdf5_path)
+            print("数据存储完成")
+            
+            # 显示最终统计信息
+            print(f"\n===== 任务完成 =====")
+            print(f"总页数: {total_pages}")
+            print(f"成功爬取基金数量: {len(all_fund_data)}")
+            print(f"数据已存储到: {hdf5_path}")
+            return True
+        else:
+            print("数据验证失败")
+            return False
+    except Exception as e:
+        print(f"调用基金净值数据下载功能时发生错误: {str(e)}")
+        print("请确保Fetch_Fund_Data.py文件存在且完整")
+        return False
 
 def download_fund_status_data():
     """下载基金基本信息和申购状态数据"""
@@ -142,18 +183,99 @@ class QuantOrchestrator:
         """执行量化任务"""
         results = {}
         
-        try:
-            print(f"\n正在执行基金数据下载...")
-            # 导入并调用Fund_Purchase_Status_Manager模块的下载函数
-            import Fund_Purchase_Status_Manager
-            success = Fund_Purchase_Status_Manager.download_all_fund_data()
+        # 如果没有指定模块，默认全部执行
+        if modules is None:
+            modules = [1, 2, 3, 4, 5, 6, 7, 8]
+            print(f"\n正在执行全部基金数据下载...")
+        else:
+            print(f"\n正在执行选定的基金数据下载模块...")
             
-            if success:
-                results['基金基本信息和申购状态数据'] = '下载成功'
-            else:
-                results['基金基本信息和申购状态数据'] = '下载失败'
-        except Exception as e:
-            results['基金基本信息和申购状态数据'] = f'下载失败: {str(e)}'
+        # 下载基金基本信息和申购状态数据
+        if 1 in modules:
+            try:
+                print(f"\n正在下载基金基本信息和申购状态数据...")
+                import Fund_Purchase_Status_Manager
+                success = Fund_Purchase_Status_Manager.download_all_fund_data()
+                
+                if success:
+                    results['基金基本信息和申购状态数据'] = '下载成功'
+                else:
+                    results['基金基本信息和申购状态数据'] = '下载失败'
+            except Exception as e:
+                results['基金基本信息和申购状态数据'] = f'下载失败: {str(e)}'
+        
+        # 下载基金净值数据
+        if 2 in modules:
+            try:
+                print(f"\n正在下载基金净值数据...")
+                success = fetch_fund_nav_data()
+                
+                if success:
+                    results['基金净值数据'] = '下载成功'
+                else:
+                    results['基金净值数据'] = '下载失败'
+            except Exception as e:
+                results['基金净值数据'] = f'下载失败: {str(e)}'
+        
+        # 下载财经网基金数据
+        if 3 in modules:
+            try:
+                print(f"\n正在下载财经网基金数据...")
+                import fetch_cnjy_fund_data
+                fetch_cnjy_fund_data.main()
+                results['财经网基金数据'] = '下载成功'
+            except Exception as e:
+                results['财经网基金数据'] = f'下载失败: {str(e)}'
+        
+        # 下载货币基金数据
+        if 4 in modules:
+            try:
+                print(f"\n正在下载货币基金数据...")
+                import fetch_currency_fund_data
+                fetch_currency_fund_data.main()
+                results['货币基金数据'] = '下载成功'
+            except Exception as e:
+                results['货币基金数据'] = f'下载失败: {str(e)}'
+        
+        # 下载场内交易基金排名数据
+        if 5 in modules:
+            try:
+                print(f"\n正在下载场内交易基金排名数据...")
+                import fetch_fbs_fund_ranking
+                fetch_fbs_fund_ranking.main()
+                results['场内交易基金排名数据'] = '下载成功'
+            except Exception as e:
+                results['场内交易基金排名数据'] = f'下载失败: {str(e)}'
+        
+        # 下载货币基金排名数据
+        if 6 in modules:
+            try:
+                print(f"\n正在下载货币基金排名数据...")
+                import fetch_hbx_fund_ranking
+                fetch_hbx_fund_ranking.main()
+                results['货币基金排名数据'] = '下载成功'
+            except Exception as e:
+                results['货币基金排名数据'] = f'下载失败: {str(e)}'
+        
+        # 下载开放基金排名数据
+        if 7 in modules:
+            try:
+                print(f"\n正在下载开放基金排名数据...")
+                import fetch_open_fund_ranking
+                fetch_open_fund_ranking.main()
+                results['开放基金排名数据'] = '下载成功'
+            except Exception as e:
+                results['开放基金排名数据'] = f'下载失败: {str(e)}'
+        
+        # 通达信数据转换
+        if 8 in modules:
+            try:
+                print(f"\n正在执行通达信数据转换...")
+                import TDX_To_HDF5
+                TDX_To_HDF5.main()
+                results['通达信数据转换'] = '转换成功'
+            except Exception as e:
+                results['通达信数据转换'] = f'转换失败: {str(e)}'
         
         return results
 
@@ -184,9 +306,40 @@ def show_main_menu():
 
 def show_module_selection_menu():
     """模块选择菜单"""
-    # 由于quant_analysis已独立运行，此处返回空列表
-    print("\n模块选择功能暂不可用")
-    return []
+    print("\n=== 选择性下载基金数据 ===")
+    print("请选择要下载的模块 (可多选，例如: 1,3,5):")
+    print("1. 基金基本信息和申购状态数据")
+    print("2. 基金净值数据")
+    print("3. 财经网基金数据")
+    print("4. 货币基金数据")
+    print("5. 场内交易基金排名数据")
+    print("6. 货币基金排名数据")
+    print("7. 开放基金排名数据")
+    print("8. 通达信转换功能")
+    
+    try:
+        # 获取用户输入的模块选择
+        selection = input("请输入选择 (0返回主菜单): ").strip()
+        
+        if selection == '0':
+            return []
+        
+        # 解析用户选择的模块
+        selected_modules = []
+        if selection:
+            # 分割用户输入的选择
+            choices = selection.split(',')
+            for choice in choices:
+                choice = choice.strip()
+                if choice.isdigit():
+                    module_num = int(choice)
+                    if 1 <= module_num <= 8:
+                        selected_modules.append(module_num)
+        
+        return selected_modules
+    except Exception as e:
+        print(f"模块选择过程中发生错误: {str(e)}")
+        return []
 
 def show_query_menu():
     """查询菜单"""
@@ -207,7 +360,7 @@ def show_quant_analysis_menu(*args, **kwargs):
         subprocess.run([sys.executable, "quant_analysis.py"], check=True)
     except subprocess.CalledProcessError as e:
         print(f"量化分析模块运行失败: {str(e)}")
-    input("\n按Enter键返回主菜单...")
+    # 移除按键确认环节
 
 # 主程序逻辑
 
@@ -237,16 +390,24 @@ def main():
                         results = orchestrator.execute_pipeline(parallel=False)
                         for module, result in results.items():
                             print(f"{module}: {result}")
-                    input("\n按Enter键返回主菜单...")
+                    # 移除按键确认环节
                 
             elif choice == '2':
                 # 选择性下载
-                modules = show_module_selection_menu()
-                if modules:
+                while True:
+                    modules = show_module_selection_menu()
+                    if not modules:
+                        break
+                    
                     results = orchestrator.execute_pipeline(modules=modules, parallel=False)
                     for module, result in results.items():
                         print(f"{module}: {result}")
-                input("\n按Enter键返回主菜单...")
+                    
+                    # 显示下载完成提示
+                    print("\n下载任务已完成！")
+                    # 继续循环，等待用户输入下一步指令
+                    # 用户可以通过输入0返回主菜单
+                # 移除按键确认环节
                 
             elif choice == '3':
                 # 增量更新
@@ -257,18 +418,20 @@ def main():
                     print("量化视图数据更新完成!")
                 except Exception as e:
                     print(f"更新过程发生错误: {str(e)}")
-                input("\n按Enter键返回主菜单...")
+                # 移除按键确认环节
                 
             elif choice == '4':
                 # 查询功能
                 print("\n=== 启动基金数据查询系统 ===")
-                print("正在启动独立的基金数据查询模块...")
+                print("正在启动基金数据查询模块...")
                 try:
-                    # 直接运行Read_HDF5_Data.py脚本
-                    subprocess.run([sys.executable, "Read_HDF5_Data.py"], check=True)
-                except subprocess.CalledProcessError as e:
+                    # 导入并调用Fund_Purchase_Status_Manager模块的查询系统
+                    import Fund_Purchase_Status_Manager
+                    Fund_Purchase_Status_Manager.query_system()
+                except Exception as e:
                     print(f"基金数据查询模块运行失败: {str(e)}")
-                input("\n按Enter键返回主菜单...")
+                    print("请确保Fund_Purchase_Status_Manager.py文件存在且完整")
+                # 移除按键确认环节
                 
             elif choice == '5':
                 # 生成Excel报表
@@ -282,12 +445,12 @@ def main():
                         print("报表生成失败")
                 except Exception as e:
                     print(f"生成报表过程发生错误: {str(e)}")
-                input("\n按Enter键返回主菜单...")
+                # 移除按键确认环节
                 
             elif choice == '6':
                 # 基金比对
                 print("\n基金比对功能暂不可用")
-                input("\n按Enter键返回主菜单...")
+                # 移除按键确认环节
                 
             elif choice == '7':
                 # 申购状态管理
@@ -311,7 +474,7 @@ def main():
                             print("数据下载完成!")
                         except Exception as e:
                             print(f"下载过程发生错误: {str(e)}")
-                        input("\n按Enter键继续...")
+                        # 移除按键确认环节
                     elif sub_choice == '2':
                         fund_code = input("请输入基金代码: ").strip()
                         if fund_code:
@@ -321,7 +484,7 @@ def main():
                                 print(f"查询过程发生错误: {str(e)}")
                         else:
                             print("请输入有效的基金代码")
-                        input("\n按Enter键继续...")
+                        # 移除按键确认环节
                     elif sub_choice == '3':
                         fund_code = input("请输入基金代码: ").strip()
                         if fund_code:
@@ -331,7 +494,7 @@ def main():
                                 print(f"查询过程发生错误: {str(e)}")
                         else:
                             print("请输入有效的基金代码")
-                        input("\n按Enter键继续...")
+                        # 移除按键确认环节
                     elif sub_choice == '4':
                         try:
                             status_choice = input("请输入申购状态 (0: 不限, 1: 可申购, 2: 限大额, 3: 暂停申购): ").strip()
@@ -340,13 +503,13 @@ def main():
                             display_filtered_funds(filtered_funds)
                         except Exception as e:
                             print(f"筛选过程发生错误: {str(e)}")
-                        input("\n按Enter键继续...")
+                        # 移除按键确认环节
                     elif sub_choice == '5':
                         try:
                             display_all_fund_codes()
                         except Exception as e:
                             print(f"显示过程发生错误: {str(e)}")
-                        input("\n按Enter键继续...")
+                        # 移除按键确认环节
                     else:
                         print("无效的功能选项，请重新输入")
                 
@@ -360,7 +523,7 @@ def main():
                     print("通达信数据转换完成!")
                 except Exception as e:
                     print(f"转换过程发生错误: {str(e)}")
-                input("\n按Enter键返回主菜单...")
+                # 移除按键确认环节
                 
             elif choice == '9':
                 # 量化分析功能
@@ -376,7 +539,7 @@ def main():
         print("\n程序已被用户中断")
     except Exception as e:
         print(f"程序运行发生错误: {str(e)}")
-        input("\n按Enter键继续...")
+        # 移除按键确认环节
 
 if __name__ == "__main__":
     main()

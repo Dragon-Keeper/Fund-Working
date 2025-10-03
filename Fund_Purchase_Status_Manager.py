@@ -532,13 +532,6 @@ def query_system():
             
         else:
             print("无效选择，请重新输入")
-        
-        # 询问是否继续查询
-        if choice in ['1', '2', '3', '4']:
-            continue_choice = input("\n是否继续查询? (y/n): ").strip().lower()
-            if continue_choice != 'y':
-                print("返回主菜单")
-                continue
 
 # 主函数
 def main():

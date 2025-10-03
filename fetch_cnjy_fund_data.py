@@ -435,3 +435,8 @@ if __name__ == "__main__":
         print("\n程序被用户中断")
     except Exception as e:
         print(f"程序运行出错: {e}")
+
+# 为了被quant_orchestrator调用而添加的main函数
+def main():
+    """被量化调度器调用的主函数"""
+    download_all_cnjy_funds()

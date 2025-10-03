@@ -581,3 +581,8 @@ def show_menu():
 # 主函数
 if __name__ == "__main__":
     show_menu()
+
+# 为了被quant_orchestrator调用而添加的main函数
+def main():
+    """被量化调度器调用的主函数"""
+    download_all_fbs_funds()

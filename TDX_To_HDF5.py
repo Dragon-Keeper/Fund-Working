@@ -184,8 +184,20 @@ def parse_fund_data_mmap(file_path, min_date=None):
                     offset = i * 32
                     buffer = mm[offset:offset+32]
                     
-                    # 按照格式解析
-                    fields = struct.unpack('IffffffI', buffer)
+                    # 对于基金数据，通达信的格式可能与股票不同
+                    # 尝试多种可能的解析格式
+                    try:
+                        # 格式1: IffffffI - 尝试原始格式
+                        fields = struct.unpack('IffffffI', buffer)
+                        format_used = 1
+                    except:
+                        try:
+                            # 格式2: IfffffII - 可能的基金格式变体
+                            fields = struct.unpack('IfffffII', buffer)
+                            format_used = 2
+                        except:
+                            # 如果所有尝试都失败，跳过此记录
+                            continue
                     
                     # 整理数据
                     # 将日期整数转换为年月日格式
@@ -198,17 +210,33 @@ def parse_fund_data_mmap(file_path, min_date=None):
                     # 如果有最小日期限制，则进行筛选
                     if min_date and date_str < min_date:
                         continue
-                        
-                    record = {
-                        'date': date_str,            # 日期
-                        'open': round(fields[1], 4), # 开盘价，保留4位小数
-                        'high': round(fields[2], 4), # 最高价，保留4位小数
-                        'low': round(fields[3], 4),  # 最低价，保留4位小数
-                        'close': round(fields[4], 4), # 收盘价（净值），保留4位小数
-                        'amount': fields[5],        # 成交额
-                        'volume': fields[6],        # 成交量
-                        'prev_close': round(fields[7], 4) # 前收盘价，保留4位小数
-                    }
+                    
+                    # 根据使用的格式构建记录
+                    if format_used == 1:
+                        # 原始格式: IffffffI
+                        record = {
+                            'date': date_str,
+                            'open': round(fields[1], 4),
+                            'high': round(fields[2], 4),
+                            'low': round(fields[3], 4),
+                            'close': round(fields[4], 4),
+                            'amount': fields[5] if fields[5] != 0 else None,
+                            'volume': fields[6] if fields[6] != 0 else None,
+                            'prev_close': round(fields[7], 4) if fields[7] != 0 else None
+                        }
+                    else:
+                        # 格式2: IfffffII
+                        record = {
+                            'date': date_str,
+                            'open': round(fields[1], 4),
+                            'high': round(fields[2], 4),
+                            'low': round(fields[3], 4),
+                            'close': round(fields[4], 4),
+                            'amount': fields[5] if fields[5] != 0 else None,
+                            'volume': fields[6] if fields[6] != 0 else None,
+                            'prev_close': round(fields[7], 4) if fields[7] != 0 else None
+                        }
+                    
                     data.append(record)
                 
                 # 按日期排序（可能需要，取决于文件存储顺序）
@@ -593,12 +621,30 @@ def process_all_day_files_optimized(source_dir, storage_file, min_date=None, num
     # 创建状态文件
     state_file = os.path.join(get_cache_dir(), "processing_state.pkl")
     
+    # 检查存储文件是否存在
+    storage_file_exists = os.path.exists(storage_file)
+    
     # 尝试加载之前的处理状态
     state = load_processing_state(state_file)
     if state:
         print(f"检测到之前的处理状态，已处理 {state['processed_count']} 个文件")
-        processed_files = state['processed_files']
-        start_time = state['start_time']
+        
+        # 如果HDF5文件不存在但有处理状态，提供选择
+        if not storage_file_exists:
+            print(f"警告: 存储文件 '{storage_file}' 不存在，但有之前的处理状态记录")
+            choice = input("是否重新开始处理? (y/n，默认为y): ").strip().lower() or "y"
+            if choice == "y":
+                print("将重新开始处理所有文件")
+                processed_files = {}
+                start_time = time.time()
+            else:
+                # 继续使用之前的状态，但创建新的存储文件
+                print("将继续使用之前的处理状态，但创建新的存储文件")
+                processed_files = state['processed_files']
+                start_time = time.time()
+        else:
+            processed_files = state['processed_files']
+            start_time = state['start_time']
     else:
         processed_files = {}
         start_time = time.time()

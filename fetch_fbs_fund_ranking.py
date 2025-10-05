@@ -527,33 +527,77 @@ def download_all_fbs_funds():
         print("未获取到任何场内交易基金数据")
 
 
+# 获取所有基金代码
+def get_all_fund_codes():
+    hdf5_path = HDF5_PATH
+    
+    if not os.path.exists(hdf5_path):
+        print(f"错误：HDF5文件不存在: {hdf5_path}")
+        return []
+    
+    with h5py.File(hdf5_path, "r") as f:
+        if "funds" not in f:
+            return []
+        
+        return list(f["funds"].keys())
+
 # 查询场内交易基金数据
 def query_fbs_fund():
     fund_code = input("请输入场内交易基金代码: ").strip()
-
+    
+    # 验证基金代码格式（6位数字）
+    if not re.match(r"^\d{6}$", fund_code):
+        print("错误：基金代码格式不正确，请输入6位数字的基金代码")
+        return
+    
     fund_data = query_fund_by_code(fund_code)
-
+    
     if fund_data:
-        print("\n基金数据查询结果:")
-        print(f"基金代码: {fund_data['fund_code']}")
-        print(f"基金简称: {fund_data['fund_name']}")
-        print(f"基金类型: {fund_data['fund_type']}")
-        print(f"数据日期: {fund_data['data_date']}")
-        print(f"最新单位净值: {fund_data['unit_nav']}")
-        print(f"最新累计净值: {fund_data['accum_nav']}")
-        print(f"近1周增长率: {fund_data['week_growth']}%")
-        print(f"近1月增长率: {fund_data['month_growth']}%")
-        print(f"近3月增长率: {fund_data['quarter_growth']}%")
-        print(f"近6月增长率: {fund_data['half_year_growth']}%")
-        print(f"近1年增长率: {fund_data['year_growth']}%")
-        print(f"近2年增长率: {fund_data['two_year_growth']}%")
-        print(f"近3年增长率: {fund_data['three_year_growth']}%")
-        print(f"今年来增长率: {fund_data['year_to_date_growth']}%")
-        print(f"成立来增长率: {fund_data['since_establishment_growth']}%")
-        print(f"成立日期: {fund_data['establishment_date']}")
-        print(f"数据获取时间: {fund_data['fetch_time']}")
+        print("\n查询结果：")
+        print(f"基金代码: {fund_data.get('fund_code', '---')}")
+        print(f"基金简称: {fund_data.get('fund_name', '---')}")
+        print(f"基金类型: {fund_data.get('fund_type', '---')}")
+        print(f"最新单位净值: {fund_data.get('unit_nav', '---')}")
+        print(f"最新累计净值: {fund_data.get('accum_nav', '---')}")
+        print(f"近1周增长率: {fund_data.get('week_growth', '---')}%")
+        print(f"近1月增长率: {fund_data.get('month_growth', '---')}%")
+        print(f"近3月增长率: {fund_data.get('quarter_growth', '---')}%")
+        print(f"近6月增长率: {fund_data.get('half_year_growth', '---')}%")
+        print(f"近1年增长率: {fund_data.get('year_growth', '---')}%")
+        print(f"近2年增长率: {fund_data.get('two_year_growth', '---')}%")
+        print(f"近3年增长率: {fund_data.get('three_year_growth', '---')}%")
+        print(f"今年来增长率: {fund_data.get('year_to_date_growth', '---')}%")
+        print(f"成立来增长率: {fund_data.get('since_establishment_growth', '---')}%")
+        print(f"成立日期: {fund_data.get('establishment_date', '---')}")
+        print(f"数据获取时间: {fund_data.get('fetch_time', '---')}")
     else:
-        print(f"未找到基金代码为 {fund_code} 的场内交易基金数据")
+        print(f"未找到基金代码为 {fund_code} 的数据")
+
+# 显示所有基金代码
+def show_all_fund_codes():
+    all_fund_codes = get_all_fund_codes()
+    
+    if not all_fund_codes:
+        print("数据库中没有基金数据")
+        return
+    
+    print(f"\n共有 {len(all_fund_codes)} 只基金:")
+    # 分页显示基金代码
+    page_size = 20
+    exit_view = False
+    for i in range(0, len(all_fund_codes), page_size):
+        if exit_view:
+            break
+            
+        page_codes = all_fund_codes[i:i+page_size]
+        for code in page_codes:
+            print(code, end='  ')
+        print()
+        
+        if i + page_size < len(all_fund_codes):
+            user_input = input("按Enter键查看下一页... 或按'q'退出查看: ").strip().lower()
+            if user_input == 'q':
+                exit_view = True
 
 
 # 显示菜单
@@ -562,15 +606,18 @@ def show_menu():
         print("\n===== 场内交易基金数据管理系统 ======")
         print("1. 下载所有场内交易基金数据")
         print("2. 查询场内交易基金数据")
+        print("3. 查看所有基金代码")
         print("0. 退出")
         print("========================\n")
 
-        choice = input("请选择功能 (0-2): ").strip()
+        choice = input("请选择功能 (0-3): ").strip()
 
         if choice == "1":
             download_all_fbs_funds()
         elif choice == "2":
             query_fbs_fund()
+        elif choice == "3":
+            show_all_fund_codes()
         elif choice == "0":
             print("感谢使用，再见！")
             break
@@ -585,4 +632,4 @@ if __name__ == "__main__":
 # 为了被quant_orchestrator调用而添加的main函数
 def main():
     """被量化调度器调用的主函数"""
-    download_all_fbs_funds()
+    show_menu()

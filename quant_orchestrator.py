@@ -364,14 +364,14 @@ def show_module_selection_menu():
     """模块选择菜单"""
     print("\n=== 选择性下载基金数据 ===")
     print("请选择要下载的模块 (可多选，例如: 1,3,5):")
-    print("1. 基金基本信息和申购状态数据")
-    print("2. 基金净值数据")
-    print("3. 财经网基金数据")
-    print("4. 货币基金数据")
-    print("5. 场内交易基金排名数据")
-    print("6. 货币基金排名数据")
-    print("7. 开放基金排名数据")
-    print("8. 通达信转换功能")
+    print("1. 基金基本信息和申购状态数据 [Fund_Purchase_Status_Manager.py]")
+    print("2. 基金净值数据 [Fetch_Fund_Data.py]")
+    print("3. 财经网基金数据 [fetch_cnjy_fund_data.py]")
+    print("4. 货币基金数据 [fetch_currency_fund_data.py]")
+    print("5. 场内交易基金排名数据 [fetch_fbs_fund_ranking.py]")
+    print("6. 货币基金排名数据 [fetch_hbx_fund_ranking.py]")
+    print("7. 开放基金排名数据 [fetch_open_fund_ranking.py]")
+    print("8. 通达信转换功能 [TDX_To_HDF5.py]")
 
     try:
         # 获取用户输入的模块选择
@@ -485,17 +485,90 @@ def main():
 
             elif choice == "4":
                 # 查询功能
-                print("\n=== 启动基金数据查询系统 ===")
-                print("正在启动基金数据查询模块...")
-                try:
-                    # 导入并调用Fund_Purchase_Status_Manager模块的查询系统
-                    import Fund_Purchase_Status_Manager
+                while True:
+                    print("\n=== 基金数据查询功能 ===")
+                    print("请选择要查询的数据源:")
+                    print("1. 财经网基金数据 (fetch_cnjy_fund_data.py)")
+                    print("2. 货币基金数据 (fetch_currency_fund_data.py)")
+                    print("3. 场内交易基金排名数据 (fetch_fbs_fund_ranking.py)")
+                    print("4. 基金净值数据 (Fetch_Fund_Data.py)")
+                    print("5. 货币基金排名数据 (fetch_hbx_fund_ranking.py)")
+                    print("6. 开放基金排名数据 (fetch_open_fund_ranking.py)")
+                    print("7. 综合基金数据 (Read_HDF5_Data.py)")
+                    print("0. 返回主菜单")
+                    
+                    sub_choice = input("请输入功能选项: ").strip()
+                    
+                    if sub_choice == "0":
+                        break  # 退出查询功能菜单，返回主菜单
+                    elif sub_choice == "1":
+                        print("\n=== 财经网基金数据查询 ===")
+                        try:
+                            import fetch_cnjy_fund_data
+                            # 调用完整菜单，而不仅仅是显示基金代码
+                            fetch_cnjy_fund_data.main()
+                        except Exception as e:
+                            print(f"财经网基金数据查询失败: {str(e)}")
+                            print("请确保fetch_cnjy_fund_data.py文件存在且完整")
+                    elif sub_choice == "2":
+                        print("\n=== 货币基金数据查询 ===")
+                        try:
+                            import fetch_currency_fund_data
+                            # 调用完整菜单，而仅仅是显示基金代码
+                            fetch_currency_fund_data.main()
+                        except Exception as e:
+                            print(f"货币基金数据查询失败: {str(e)}")
+                            print("请确保fetch_currency_fund_data.py文件存在且完整")
+                    elif sub_choice == "3":
+                        print("\n=== 场内交易基金排名数据查询 ===")
+                        try:
+                            import fetch_fbs_fund_ranking
+                            # 调用完整菜单，而仅仅是显示基金代码
+                            fetch_fbs_fund_ranking.main()
+                        except Exception as e:
+                            print(f"场内交易基金排名数据查询失败: {str(e)}")
+                            print("请确保fetch_fbs_fund_ranking.py文件存在且完整")
+                    elif sub_choice == "4":
+                        print("\n=== 基金净值数据查询 ===")
+                        try:
+                            import Fetch_Fund_Data
+                            # 调用完整菜单，而仅仅是显示基金代码
+                            Fetch_Fund_Data.main()
+                        except Exception as e:
+                            print(f"基金净值数据查询失败: {str(e)}")
+                            print("请确保Fetch_Fund_Data.py文件存在且完整")
+                    elif sub_choice == "5":
+                        print("\n=== 货币基金排名数据查询 ===")
+                        try:
+                            import fetch_hbx_fund_ranking
+                            # 调用完整菜单，而仅仅是显示基金代码
+                            fetch_hbx_fund_ranking.main()
+                        except Exception as e:
+                            print(f"货币基金数据查询失败: {str(e)}")
+                            print("请确保fetch_hbx_fund_ranking.py文件存在且完整")
+                    elif sub_choice == "6":
+                        print("\n=== 开放基金排名数据查询 ===")
+                        try:
+                            import fetch_open_fund_ranking
+                            # 调用完整菜单，而仅仅是显示基金代码
+                            fetch_open_fund_ranking.main()
+                        except Exception as e:
+                            print(f"开放基金排名数据查询失败: {str(e)}")
+                            print("请确保fetch_open_fund_ranking.py文件存在且完整")
+                    elif sub_choice == "7":
+                        print("\n=== 综合基金数据查询 ===")
+                        try:
+                            import Read_HDF5_Data
+                            # 直接调用Read_HDF5_Data的main函数，使用其完整的菜单系统
+                            Read_HDF5_Data.main()
+                        except Exception as e:
+                            print(f"综合基金数据查询失败: {str(e)}")
+                            print("请确保Read_HDF5_Data.py文件存在且完整")
+                    else:
+                        print("无效的功能选项，请重新输入")
 
-                    Fund_Purchase_Status_Manager.query_system()
-                except Exception as e:
-                    print(f"基金数据查询模块运行失败: {str(e)}")
-                    print("请确保Fund_Purchase_Status_Manager.py文件存在且完整")
-                # 移除按键确认环节
+                    # 显示提示信息，确保用户知道可以继续选择其他数据源
+                    print("\n(提示：查询完成后将自动返回查询功能菜单)")
 
             elif choice == "5":
                 # 生成Excel报表

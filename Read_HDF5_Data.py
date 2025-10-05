@@ -831,8 +831,8 @@ def main():
         if choice not in ['7', '0']:
             continue_choice = input("\n是否继续查询? (y/n): ").strip().lower()
             if continue_choice != 'y':
-                print("返回主菜单")
-                continue
+                print("返回查询功能菜单")
+                break
 
 if __name__ == "__main__":
     main()

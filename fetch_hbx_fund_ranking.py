@@ -456,8 +456,13 @@ def download_all_currency_funds():
 
 
 # 查询货币基金数据
+
 def query_currency_fund():
     fund_code = input("请输入货币基金代码: ").strip()
+    # 检查基金代码格式是否正确
+    if not fund_code.isdigit() or len(fund_code) != 6:
+        print("错误：基金代码应为6位数字")
+        return
 
     fund_data = query_fund_by_code(fund_code)
 
@@ -486,20 +491,67 @@ def query_currency_fund():
         print(f"未找到基金代码为 {fund_code} 的货币基金数据")
 
 
+# 获取所有基金代码
+def get_all_fund_codes():
+    """获取HDF5文件中所有基金代码"""
+    if not os.path.exists(HDF5_PATH):
+        print(f"错误：HDF5文件不存在: {HDF5_PATH}")
+        return []
+    
+    try:
+        with h5py.File(HDF5_PATH, "r") as f:
+            if "funds" not in f:
+                return []
+            # 返回funds组下所有子组名（即基金代码）
+            return list(f["funds"].keys())
+    except Exception as e:
+        print(f"读取基金代码时发生错误: {e}")
+        return []
+
+# 显示所有基金代码
+def show_all_fund_codes():
+    """显示所有基金代码，支持分页查看"""
+    all_fund_codes = get_all_fund_codes()
+    
+    if not all_fund_codes:
+        print("数据库中没有基金数据")
+        return
+    
+    print(f"\n共有 {len(all_fund_codes)} 只基金:")
+    # 分页显示基金代码
+    page_size = 20
+    exit_view = False
+    for i in range(0, len(all_fund_codes), page_size):
+        if exit_view:
+            break
+            
+        page_codes = all_fund_codes[i:i+page_size]
+        for code in page_codes:
+            print(code, end='  ')
+        print()
+        
+        if i + page_size < len(all_fund_codes):
+            user_input = input("按Enter键查看下一页... 或按'q'退出查看: ").strip().lower()
+            if user_input == 'q':
+                exit_view = True
+
 # 显示菜单
 def show_menu():
     while True:
         print("\n===== 货币基金数据管理系统 ======")
         print("1. 下载所有货币基金数据")
         print("2. 查询货币基金数据")
+        print("3. 查看所有基金代码")
         print("0. 退出")
 
-        choice = input("请选择功能 (0-2): ").strip()
+        choice = input("请选择功能 (0-3): ").strip()
 
         if choice == "1":
             download_all_currency_funds()
         elif choice == "2":
             query_currency_fund()
+        elif choice == "3":
+            show_all_fund_codes()
         elif choice == "0":
             print("感谢使用，再见！")
             break
@@ -514,4 +566,4 @@ if __name__ == "__main__":
 # 为了被quant_orchestrator调用而添加的main函数
 def main():
     """被量化调度器调用的主函数"""
-    download_all_currency_funds()
+    show_menu()

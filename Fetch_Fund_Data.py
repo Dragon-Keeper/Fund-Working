@@ -62,7 +62,7 @@ def get_hdf5_path():
     if not os.path.exists(hdf5_dir):
         os.makedirs(hdf5_dir)
     # 构建HDF5文件完整路径
-    hdf5_path = os.path.join(hdf5_dir, "Fund_NAV.h5")
+    hdf5_path = os.path.join(hdf5_dir, "Fetch_Fund_Data.h5")
     return hdf5_path
 
 
@@ -241,7 +241,7 @@ def parse_fund_data(page_content):
                     # 根据用户提供的字段映射关系解析数据
                     fund_info = {
                         "fund_code": items[0],  # 基金代码
-                        "fund_name": items[1],  # 基金名字
+                        "fund_name": items[1],  # 基金简称
                         "current_unit_nav": (
                             float(items[3]) if items[3] and items[3] != "" else None
                         ),  # 最新交易日的单位净值
@@ -421,7 +421,7 @@ def query_fund_by_code(fund_code):
             # 格式化显示基金数据
             print("\n===== 基金数据详情 ======")
             print(f"基金代码: {fund_data.get('fund_code', '未知')}")
-            print(f"基金名称: {fund_data.get('fund_name', '未知')}")
+            print(f"基金简称: {fund_data.get('fund_name', '未知')}")
             print(f"最新单位净值: {fund_data.get('current_unit_nav', '未知')}")
             print(f"最新累计净值: {fund_data.get('current_accumulated_nav', '未知')}")
             print(f"上一交易日单位净值: {fund_data.get('previous_unit_nav', '未知')}")
@@ -444,6 +444,50 @@ def query_fund_by_code(fund_code):
         print(f"\n错误：查询基金数据时发生异常: {e}")
         return False
 
+# 获取所有基金代码
+def get_all_fund_codes():
+    """获取HDF5文件中所有基金代码"""
+    hdf5_path = get_hdf5_path()
+    
+    if not os.path.exists(hdf5_path):
+        print(f"错误：HDF5文件不存在: {hdf5_path}")
+        return []
+    
+    try:
+        with h5py.File(hdf5_path, "r") as f:
+            # 返回根目录下所有组名（即基金代码）
+            return list(f.keys())
+    except Exception as e:
+        print(f"读取基金代码时发生错误: {e}")
+        return []
+
+# 显示所有基金代码
+def show_all_fund_codes():
+    """显示所有基金代码"""
+    all_fund_codes = get_all_fund_codes()
+    
+    if not all_fund_codes:
+        print("数据库中没有基金数据")
+        return
+    
+    print(f"\n共有 {len(all_fund_codes)} 只基金:")
+    # 分页显示基金代码
+    page_size = 20
+    exit_view = False
+    for i in range(0, len(all_fund_codes), page_size):
+        if exit_view:
+            break
+            
+        page_codes = all_fund_codes[i:i+page_size]
+        for code in page_codes:
+            print(code, end='  ')
+        print()
+        
+        if i + page_size < len(all_fund_codes):
+            user_input = input("按Enter键查看下一页... 或按'q'退出查看: ").strip().lower()
+            if user_input == 'q':
+                exit_view = True
+
 
 # 显示菜单
 def show_menu():
@@ -451,6 +495,7 @@ def show_menu():
     print("\n===== 开放式基金数据管理系统 ======")
     print("1. 下载所有页面的开放式基金数据")
     print("2. 查询开放式基金数据")
+    print("3. 查看所有基金代码")
     print("0. 退出系统")
     print("========================\n")
 
@@ -630,6 +675,14 @@ def main():
                 except Exception as e:
                     logger.error(f"查询基金数据时发生错误: {e}")
                     print(f"\n错误：查询过程中发生异常: {e}")
+
+            elif choice == "3":
+                # 查看所有基金代码
+                try:
+                    show_all_fund_codes()
+                except Exception as e:
+                    logger.error(f"显示基金代码时发生错误: {e}")
+                    print(f"\n错误：显示基金代码时发生异常: {e}")
 
             elif choice == "0":
                 # 退出程序

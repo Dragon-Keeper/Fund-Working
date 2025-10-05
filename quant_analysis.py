@@ -156,6 +156,7 @@ class QuantAnalyzer:
         indicators['上涨季数比例'] = self._calculate_positive_quarters_ratio(df_clean)
         indicators['日涨跌幅标准差'] = self._calculate_daily_volatility(df_clean)
         indicators['月涨跌幅标准差'] = self._calculate_monthly_volatility(df_clean)
+        indicators['月涨跌幅最大值比中值倍数'] = self._calculate_max_to_median_monthly_ratio(df_clean)
         indicators['最大回撤率'] = self._calculate_max_drawdown(df_clean)
         indicators['第二大回撤率'] = self._calculate_second_max_drawdown(df_clean)
         indicators['夏普率'] = self._calculate_sharpe_ratio(df_clean)
@@ -489,32 +490,306 @@ class QuantAnalyzer:
         
         return results
     
-    def export_to_excel(self, output_path=None):
+    def _calculate_monthly_returns(self, df):
+        """计算月度收益率"""
+        if len(df) < 2:
+            return pd.Series()
+        
+        # 按月重采样并计算月度收益率
+        monthly_prices = df.resample('ME', on='date')['close'].last()
+        monthly_returns = monthly_prices.pct_change()
+        return monthly_returns
+        
+    def _calculate_quarterly_returns(self, df):
+        """计算季度收益率"""
+        if len(df) < 2:
+            return pd.Series()
+        
+        # 按季度重采样并计算季度收益率
+        quarterly_prices = df.resample('QE', on='date')['close'].last()
+        quarterly_returns = quarterly_prices.pct_change()
+        return quarterly_returns
+        
+    def _calculate_monthly_volatility(self, df):
+        """计算月涨跌幅标准差"""
+        monthly_returns = self._calculate_monthly_returns(df)
+        if len(monthly_returns) < 2:
+            return 0.0
+        
+        return monthly_returns.std() * 100  # 转换为百分比
+        
+    def _calculate_max_to_median_monthly_ratio(self, df):
+        """计算月涨跌幅最大值比中值倍数"""
+        monthly_returns = self._calculate_monthly_returns(df)
+        if len(monthly_returns) < 2:
+            return 0.0
+        
+        # 只考虑正收益率用于计算最大值与中值的比率
+        positive_monthly_returns = monthly_returns[monthly_returns > 0]
+        if len(positive_monthly_returns) == 0:
+            return 0.0
+        
+        max_return = positive_monthly_returns.max()
+        median_return = positive_monthly_returns.median()
+        
+        if median_return == 0:
+            return 0.0
+        
+        return max_return / median_return
+        
+    def _get_fund_info_from_multiple_sources(self, fund_code):
+        """从多个HDF5数据源获取基金信息，增强版"""
+        # 详细记录数据获取过程的日志
+        print(f"获取基金代码 {fund_code} 的详细信息...")
+        fund_info = {}
+        root_dir = os.path.dirname(os.path.abspath(__file__))
+        data_dir = os.path.join(root_dir, "data")
+        
+        # 确保处理所有需要的列，先初始化所有列的值为空字符串
+        required_columns = ['基金简称', '基金类型', '万份收益', '7日年化收益率', '14日年化收益率', '28日年化收益率', 
+                          '近1月增长率', '近3月增长率', '近6月增长率', '近1年增长率', 
+                          '近2年增长率', '近3年增长率', '近5年增长率', '今年来增长率', '成立来增长率']
+        
+        for col in required_columns:
+            fund_info[col] = ''
+        
+        # 存储映射关系，用于将不同数据源的字段映射到统一的中文表头
+        field_mappings = {
+            'per_10k_return': '万份收益',
+            'latest_10k_profit': '万份收益',
+            'seven_day_annualized': '7日年化收益率',
+            'latest_7day_annual': '7日年化收益率',
+            'fourteen_day_annualized': '14日年化收益率',
+            'twenty_eight_day_annualized': '28日年化收益率',
+            'month_growth': '近1月增长率',
+            'quarter_growth': '近3月增长率',
+            'half_year_growth': '近6月增长率',
+            'year_growth': '近1年增长率',
+            'two_year_growth': '近2年增长率',
+            'three_year_growth': '近3年增长率',
+            'five_year_growth': '近5年增长率',
+            'year_to_date_growth': '今年来增长率',
+            'since_establishment_growth': '成立来增长率',
+            'fund_name': '基金简称',
+            'fund_type': '基金类型'
+        }
+        
+        # 1. 从Fund_Purchase_Status_Manager获取数据
+        try:
+            import Fund_Purchase_Status_Manager
+            hdf5_path = Fund_Purchase_Status_Manager.get_hdf5_path()
+            if os.path.exists(hdf5_path):
+                print(f"  尝试从Fund_Purchase_Status_Manager ({hdf5_path}) 获取数据")
+                # 尝试直接使用pandas读取HDF5文件
+                df = pd.read_hdf(hdf5_path, key="fund_purchase_status")
+                fund_row = df[df['基金代码'] == fund_code]
+                if not fund_row.empty:
+                    for col in required_columns:
+                        if col in fund_row.columns and pd.notna(fund_row.iloc[0][col]):
+                            # 不再检查是否为空，确保获取最新数据
+                            fund_info[col] = fund_row.iloc[0][col]
+        except Exception as e:
+            print(f"从Fund_Purchase_Status_Manager获取数据时出错: {str(e)}")
+        
+        # 2. 从CNJY_Fund_Data.h5获取数据
+        cnjy_file = os.path.join(data_dir, "CNJY_Fund_Data.h5")
+        try:
+            if os.path.exists(cnjy_file):
+                print(f"  尝试从CNJY_Fund_Data.h5 ({cnjy_file}) 获取数据")
+                with h5py.File(cnjy_file, 'r') as f:
+                    if "funds" in f and fund_code in f["funds"]:
+                        fund_group = f["funds"][fund_code]
+                        for key, value in fund_group.attrs.items():
+                            if isinstance(value, bytes):
+                                try:
+                                    decoded_value = value.decode("utf-8")
+                                except:
+                                    decoded_value = str(value)
+                            else:
+                                decoded_value = value
+                            
+                            # 使用映射关系获取中文表头
+                            if key in field_mappings:
+                                chinese_column = field_mappings[key]
+                                # 不再检查是否为空，确保获取最新数据
+                                fund_info[chinese_column] = decoded_value
+        except Exception as e:
+            print(f"从CNJY_Fund_Data.h5获取数据时出错: {str(e)}")
+        
+        # 3. 从Currency_Fund_Data.h5获取数据
+        currency_file = os.path.join(data_dir, "Currency_Fund_Data.h5")
+        try:
+            if os.path.exists(currency_file):
+                print(f"  尝试从Currency_Fund_Data.h5 ({currency_file}) 获取数据")
+                with h5py.File(currency_file, 'r') as f:
+                    if "funds" in f and fund_code in f["funds"]:
+                        fund_group = f["funds"][fund_code]
+                        for key, value in fund_group.attrs.items():
+                            if isinstance(value, bytes):
+                                try:
+                                    decoded_value = value.decode("utf-8")
+                                except:
+                                    decoded_value = str(value)
+                            else:
+                                decoded_value = value
+                            
+                            # 使用映射关系获取中文表头
+                            if key in field_mappings:
+                                chinese_column = field_mappings[key]
+                                # 不再检查是否为空，确保获取最新数据
+                                fund_info[chinese_column] = decoded_value
+        except Exception as e:
+            print(f"从Currency_Fund_Data.h5获取数据时出错: {str(e)}")
+        
+        # 4. 从HBX_Fund_Ranking_Data.h5获取数据
+        hbx_file = os.path.join(data_dir, "HBX_Fund_Ranking_Data.h5")
+        try:
+            if os.path.exists(hbx_file):
+                print(f"  尝试从HBX_Fund_Ranking_Data.h5 ({hbx_file}) 获取数据")
+                with h5py.File(hbx_file, 'r') as f:
+                    if "funds" in f and fund_code in f["funds"]:
+                        fund_group = f["funds"][fund_code]
+                        for key, value in fund_group.attrs.items():
+                            if isinstance(value, bytes):
+                                try:
+                                    decoded_value = value.decode("utf-8")
+                                except:
+                                    decoded_value = str(value)
+                            else:
+                                decoded_value = value
+                            
+                            # 使用映射关系获取中文表头
+                            if key in field_mappings:
+                                chinese_column = field_mappings[key]
+                                # 不再检查是否为空，确保获取最新数据
+                                fund_info[chinese_column] = decoded_value
+        except Exception as e:
+            print(f"从HBX_Fund_Ranking_Data.h5获取数据时出错: {str(e)}")
+        
+        # 5. 从Fetch_Fund_Data.h5获取数据（额外数据源）
+        fetch_fund_file = os.path.join(data_dir, "Fetch_Fund_Data.h5")
+        try:
+            if os.path.exists(fetch_fund_file):
+                print(f"  尝试从Fetch_Fund_Data.h5 ({fetch_fund_file}) 获取数据")
+                with h5py.File(fetch_fund_file, 'r') as f:
+                    if "funds" in f and fund_code in f["funds"]:
+                        fund_group = f["funds"][fund_code]
+                        for key, value in fund_group.attrs.items():
+                            if isinstance(value, bytes):
+                                try:
+                                    decoded_value = value.decode("utf-8")
+                                except:
+                                    decoded_value = str(value)
+                            else:
+                                decoded_value = value
+                            
+                            # 使用映射关系获取中文表头
+                            if key in field_mappings:
+                                chinese_column = field_mappings[key]
+                                # 不再检查是否为空，确保获取最新数据
+                                fund_info[chinese_column] = decoded_value
+        except Exception as e:
+            print(f"从Fetch_Fund_Data.h5获取数据时出错: {str(e)}")
+        
+        # 6. 从Open_Fund_Ranking_Data.h5获取数据（额外数据源）
+        open_fund_file = os.path.join(data_dir, "Open_Fund_Ranking_Data.h5")
+        try:
+            if os.path.exists(open_fund_file):
+                print(f"  尝试从Open_Fund_Ranking_Data.h5 ({open_fund_file}) 获取数据")
+                with h5py.File(open_fund_file, 'r') as f:
+                    if "funds" in f and fund_code in f["funds"]:
+                        fund_group = f["funds"][fund_code]
+                        for key, value in fund_group.attrs.items():
+                            if isinstance(value, bytes):
+                                try:
+                                    decoded_value = value.decode("utf-8")
+                                except:
+                                    decoded_value = str(value)
+                            else:
+                                decoded_value = value
+                            
+                            # 使用映射关系获取中文表头
+                            if key in field_mappings:
+                                chinese_column = field_mappings[key]
+                                # 不再检查是否为空，确保获取最新数据
+                                fund_info[chinese_column] = decoded_value
+        except Exception as e:
+            print(f"从Open_Fund_Ranking_Data.h5获取数据时出错: {str(e)}")
+        
+        # 替换空字符串为'N/A'
+        for col in fund_info:
+            if fund_info[col] == '':
+                fund_info[col] = 'N/A'
+        
+        # 打印获取到的数据摘要
+        print(f"  获取到的基金信息: {fund_code} - {fund_info['基金简称']}")
+        for col in required_columns[2:]:  # 跳过基金简称和基金类型
+            if fund_info[col] != 'N/A':
+                print(f"    {col}: {fund_info[col]}")
+        
+        return fund_info
+        
+    def export_to_excel(self, output_path=None, is_all_funds=False, specific_fund_code=None):
         """将量化分析结果导出到Excel文档"""
-        # 创建Excel文件
-        today_str = datetime.now().strftime('%Y%m%d')
+        # 创建报表目录
+        report_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
+        if not os.path.exists(report_dir):
+            os.makedirs(report_dir)
+        
+        # 创建Excel文件，根据不同功能生成不同格式的文件名
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         if output_path:
             excel_file = output_path
         else:
-            excel_file = f"量化分析结果_{today_str}.xlsx"
+            if is_all_funds:
+                # 分析所有基金时的文件名格式
+                excel_file = os.path.join(report_dir, f"All_Fund_量化分析结果_{timestamp}.xlsx")
+            elif specific_fund_code:
+                # 分析特定基金时的文件名格式
+                excel_file = os.path.join(report_dir, f"{specific_fund_code}_量化分析结果_{timestamp}.xlsx")
+            else:
+                # 默认文件名格式
+                excel_file = os.path.join(report_dir, f"基金量化分析报表_{timestamp}.xlsx")
+        
+        # 打印当前正在生成的文件名
+        print(f"正在生成Excel报表: {excel_file}")
         
         # 创建DataFrame存储结果
         data = []
-        columns = ['基金代码', '基金名称']
+        columns = ['基金代码', '基金简称']
+        
+        # 添加用户要求的基金信息列
+        fund_info_columns = ['基金类型', '万份收益', '7日年化收益率', '14日年化收益率', '28日年化收益率', 
+                            '近1月增长率', '近3月增长率', '近6月增长率', '近1年增长率', 
+                            '近2年增长率', '近3年增长率', '近5年增长率', '今年来增长率', '成立来增长率']
+        columns.extend(fund_info_columns)
         
         # 获取所有唯一的指标名称
         all_indicators = set()
         for fund_code, fund_info in self.results.items():
             all_indicators.update(fund_info['indicators'].keys())
         
-        # 按重要性排序指标
-        important_indicators = ['年化收益率', '夏普率', '卡玛比率', '最大回撤率', '第二大回撤率']
+        # 按重要性排序指标，并确保新增的指标位置正确
+        important_indicators = ['年化收益率', '夏普率', '卡玛比率', '最大回撤率', '第二大回撤率', 
+                               '上涨日数比例', '上涨月数比例', '上涨季数比例', 
+                               '日涨跌幅标准差', '月涨跌幅标准差', '月涨跌幅最大值比中值倍数']
         sorted_indicators = important_indicators + [ind for ind in all_indicators if ind not in important_indicators]
         columns.extend(sorted_indicators)
         
         # 填充数据
         for fund_code, fund_info in self.results.items():
-            row = [fund_code, fund_info['name']]
+            # 从多个数据源获取基金信息
+            detailed_fund_info = self._get_fund_info_from_multiple_sources(fund_code)
+            
+            # 获取基金简称，如果没有则使用基金名称
+            fund_short_name = detailed_fund_info.get('基金简称', fund_info['name'])
+            
+            row = [fund_code, fund_short_name]
+            
+            # 添加基金信息列
+            for info_col in fund_info_columns:
+                row.append(detailed_fund_info.get(info_col, 'N/A'))
+            
             for indicator in sorted_indicators:
                 row.append(fund_info['indicators'].get(indicator, 'N/A'))
             data.append(row)
@@ -590,7 +865,7 @@ def show_quant_analysis_menu():
     print("请选择操作:")
     print("1. 计算并导出所有基金量化指标")
     print("2. 计算并导出指定基金量化指标")
-    print("3. 自定义HDF5文件路径")
+    print("3. 自定义HDF5文件路径（指向基金净值时间序列数据库，默认路径：data/All_Fund_Data.h5）")
     print("0. 退出系统")
 
 # 处理所有基金的量化分析
@@ -621,8 +896,8 @@ def handle_all_funds_quant_analysis(analyzer):
         success = analyzer.analyze_all_funds()
         
         if success:
-            # 导出到Excel
-            excel_file = analyzer.export_to_excel()
+            # 导出到Excel，使用All_Fund文件名格式
+            excel_file = analyzer.export_to_excel(is_all_funds=True)
             if excel_file:
                 print(f"\n量化分析完成！结果已导出至: {excel_file}")
         else:
@@ -667,8 +942,8 @@ def handle_specific_fund_quant_analysis(analyzer):
         success = analyzer.analyze_specific_fund(fund_code)
         
         if success:
-            # 导出到Excel
-            excel_file = analyzer.export_to_excel()
+            # 导出到Excel，使用基金代码文件名格式
+            excel_file = analyzer.export_to_excel(specific_fund_code=fund_code)
             if excel_file:
                 print(f"\n量化分析完成！结果已导出至: {excel_file}")
         else:

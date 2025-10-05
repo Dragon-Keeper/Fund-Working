@@ -274,6 +274,49 @@
 1. 安装依赖：`pip install requests`
 2. 运行 `python test_api.py`
 
+### 10. Excel报表生成器 (excel_report_generator.py)
+
+一个专为基金量化分析数据设计的报表自动化工具，能够从HDF5数据文件中提取基金数据，进行处理后生成格式规范、功能完善的Excel报表。该工具通过columns_to_delete_final_excel列表在写入Excel文件前删除不需要显示的列（如"成交额"、"成交量"、"前收盘价"），确保报表的简洁性和专业性。生成的报表包含条件格式和自动筛选功能，便于用户进行基金数据分析和比较。
+
+### 11. 基金量化分析系统 (quant_analysis.py)
+
+#### 功能概述
+基于完整净值时间序列数据的基金量化分析系统，提供严格、准确的基金量化指标计算功能。系统采用严格的统计分析方法，确保计算结果的准确性与可靠性，并提供统计显著性检验功能。
+
+#### 主要功能
+- **核心量化指标计算**：年化收益率、上涨日数比例、涨跌幅标准差、最大回撤率、夏普率、卡玛比率、索提诺比率、信息比率等
+- **多源数据补充**：从6个HDF5数据源获取基金详细信息和历史表现数据
+- **字段映射系统**：确保不同数据源的字段正确映射到统一表头
+- **数据清洗与异常值处理**：使用IQR方法识别和过滤异常值
+- **时间范围筛选**：支持自定义分析时间范围
+- **统计显著性检验**：提供t检验、置信区间和正态性检验等统计分析
+- **Excel导出功能**：将分析结果导出为Excel文档，包含条件格式设置
+- **自定义文件名格式**：
+  - 指定基金分析结果：基金代码_量化分析结果_YYYYMMDD_HHMMSS.xlsx
+  - 所有基金分析结果：All_Fund_量化分析结果_YYYYMMDD_HHMMSS.xlsx
+- **交互式菜单系统**：提供友好的命令行交互界面
+- **进度显示**：在批量分析时显示进度信息
+
+#### 使用方法
+1. 安装依赖：`pip install numpy pandas h5py matplotlib scipy xlsxwriter`
+2. 运行：`python quant_analysis.py` 或通过 `quant_orchestrator.py` 调用
+3. 菜单操作：
+   - 选择1：计算并导出所有基金量化指标
+   - 选择2：计算并导出指定基金量化指标
+   - 选择3：自定义HDF5文件路径
+   - 选择0：退出系统
+
+#### 数据来源
+系统会从以下HDF5文件获取数据：
+```
+./data/All_Fund_Data.h5
+./data/CNJY_Fund_Data.h5
+./data/Currency_Fund_Data.h5
+./data/HBX_Fund_Ranking_Data.h5
+./data/Fetch_Fund_Data.h5
+./data/Open_Fund_Ranking_Data.h5
+```
+
 ## 存储方案
 
 ### HDF5数据存储

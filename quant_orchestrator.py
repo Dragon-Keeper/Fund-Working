@@ -353,10 +353,8 @@ def show_main_menu():
     print("3. 增量更新量化视图数据")
     print("4. 查询功能")
     print("5. 生成Excel报表")
-    print("6. 基金比对")
-    print("7. 申购状态管理")
-    print("8. 通达信转换功能")
-    print("9. 量化分析功能")
+    print("6. 通达信转换功能")
+    print("7. 量化分析功能")
     print("0. 退出系统")
 
 
@@ -495,12 +493,72 @@ def main():
                     print("5. 货币基金排名数据 (fetch_hbx_fund_ranking.py)")
                     print("6. 开放基金排名数据 (fetch_open_fund_ranking.py)")
                     print("7. 综合基金数据 (Read_HDF5_Data.py)")
+                    print("8. 基金申购状态管理")
                     print("0. 返回主菜单")
                     
                     sub_choice = input("请输入功能选项: ").strip()
                     
                     if sub_choice == "0":
                         break  # 退出查询功能菜单，返回主菜单
+                    elif sub_choice == "8":
+                        # 基金申购状态管理子菜单
+                        while True:
+                            print("\n=== 基金申购状态管理 ===")
+                            print("1. 下载基金基本信息和申购状态数据")
+                            print("2. 查询基金基本信息")
+                            print("3. 查询基金申购状态")
+                            print("4. 按申购状态筛选基金")
+                            print("5. 显示所有基金代码")
+                            print("0. 返回上一级菜单")
+                            
+                            申购_status_sub_choice = input("请输入功能选项: ").strip()
+                            
+                            if 申购_status_sub_choice == "0":
+                                break
+                            elif 申购_status_sub_choice == "1":
+                                print("正在下载基金基本信息和申购状态数据...")
+                                try:
+                                    download_fund_status_data()
+                                    print("数据下载完成!")
+                                except Exception as e:
+                                    print(f"下载过程发生错误: {str(e)}")
+                            elif 申购_status_sub_choice == "2":
+                                fund_code = input("请输入基金代码: ").strip()
+                                if fund_code:
+                                    try:
+                                        display_fund_basic_info(fund_code)
+                                    except Exception as e:
+                                        print(f"查询过程发生错误: {str(e)}")
+                                else:
+                                    print("请输入有效的基金代码")
+                            elif 申购_status_sub_choice == "3":
+                                fund_code = input("请输入基金代码: ").strip()
+                                if fund_code:
+                                    try:
+                                        display_fund_purchase_status(fund_code)
+                                    except Exception as e:
+                                        print(f"查询过程发生错误: {str(e)}")
+                                else:
+                                    print("请输入有效的基金代码")
+                            elif 申购_status_sub_choice == "4":
+                                try:
+                                    status_choice = input(
+                                        "请输入申购状态 (0: 不限, 1: 可申购, 2: 限大额, 3: 暂停申购): "
+                                    ).strip()
+                                    status = (
+                                        int(status_choice) if status_choice.isdigit() else 0
+                                    )
+                                    filtered_funds = filter_funds_by_purchase_status(status)
+                                    display_filtered_funds(filtered_funds)
+                                except Exception as e:
+                                    print(f"筛选过程发生错误: {str(e)}")
+                            elif 申购_status_sub_choice == "5":
+                                try:
+                                    display_all_fund_codes()
+                                except Exception as e:
+                                    print(f"显示过程发生错误: {str(e)}")
+                            else:
+                                print("无效的功能选项，请重新输入")
                     elif sub_choice == "1":
                         print("\n=== 财经网基金数据查询 ===")
                         try:
@@ -585,76 +643,6 @@ def main():
                 # 移除按键确认环节
 
             elif choice == "6":
-                # 基金比对
-                print("\n基金比对功能暂不可用")
-                # 移除按键确认环节
-
-            elif choice == "7":
-                # 申购状态管理
-                print("\n=== 基金申购状态管理 ===")
-                print("1. 下载基金基本信息和申购状态数据")
-                print("2. 查询基金基本信息")
-                print("3. 查询基金申购状态")
-                print("4. 按申购状态筛选基金")
-                print("5. 显示所有基金代码")
-                print("0. 返回主菜单")
-
-                while True:
-                    sub_choice = input("请输入功能选项: ").strip()
-
-                    if sub_choice == "0":
-                        break
-                    elif sub_choice == "1":
-                        print("正在下载基金基本信息和申购状态数据...")
-                        try:
-                            download_fund_status_data()
-                            print("数据下载完成!")
-                        except Exception as e:
-                            print(f"下载过程发生错误: {str(e)}")
-                        # 移除按键确认环节
-                    elif sub_choice == "2":
-                        fund_code = input("请输入基金代码: ").strip()
-                        if fund_code:
-                            try:
-                                display_fund_basic_info(fund_code)
-                            except Exception as e:
-                                print(f"查询过程发生错误: {str(e)}")
-                        else:
-                            print("请输入有效的基金代码")
-                        # 移除按键确认环节
-                    elif sub_choice == "3":
-                        fund_code = input("请输入基金代码: ").strip()
-                        if fund_code:
-                            try:
-                                display_fund_purchase_status(fund_code)
-                            except Exception as e:
-                                print(f"查询过程发生错误: {str(e)}")
-                        else:
-                            print("请输入有效的基金代码")
-                        # 移除按键确认环节
-                    elif sub_choice == "4":
-                        try:
-                            status_choice = input(
-                                "请输入申购状态 (0: 不限, 1: 可申购, 2: 限大额, 3: 暂停申购): "
-                            ).strip()
-                            status = (
-                                int(status_choice) if status_choice.isdigit() else 0
-                            )
-                            filtered_funds = filter_funds_by_purchase_status(status)
-                            display_filtered_funds(filtered_funds)
-                        except Exception as e:
-                            print(f"筛选过程发生错误: {str(e)}")
-                        # 移除按键确认环节
-                    elif sub_choice == "5":
-                        try:
-                            display_all_fund_codes()
-                        except Exception as e:
-                            print(f"显示过程发生错误: {str(e)}")
-                        # 移除按键确认环节
-                    else:
-                        print("无效的功能选项，请重新输入")
-
-            elif choice == "8":
                 # 通达信转换功能
                 print("\n=== TDX数据转HDF5格式 ===")
                 print("正在处理通达信.day文件并转换为HDF5格式...")
@@ -666,7 +654,7 @@ def main():
                     print(f"转换过程发生错误: {str(e)}")
                 # 移除按键确认环节
 
-            elif choice == "9":
+            elif choice == "7":
                 # 量化分析功能
                 show_quant_analysis_menu(orchestrator)
 

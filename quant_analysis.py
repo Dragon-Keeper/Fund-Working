@@ -7,6 +7,17 @@ from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 from scipy import stats
 import warnings
+import concurrent.futures
+import multiprocessing
+import threading
+
+# 忽略警告信息
+warnings.filterwarnings("ignore")
+
+# 定义线程模式常量
+THREAD_MODE_SINGLE = 1
+THREAD_MODE_CUSTOM = 2
+THREAD_MODE_AUTO = 3
 
 # 忽略警告信息
 warnings.filterwarnings("ignore")
@@ -106,7 +117,7 @@ class QuantAnalyzer:
             print(f"获取基金代码列表时出错: {str(e)}")
             return []
 
-    def analyze_all_funds(self):
+    def analyze_all_funds(self, thread_mode=THREAD_MODE_AUTO, custom_thread_count=None):
         """分析所有基金"""
         # 获取所有基金代码
         all_fund_codes = self.get_all_fund_codes()
@@ -117,15 +128,111 @@ class QuantAnalyzer:
             return False
 
         print(f"共发现 {total_funds} 只基金，开始进行量化分析...")
-
-        # 逐个分析基金
+        
+        # 如果只有少量基金，直接使用单线程
+        if total_funds <= 5:
+            print("基金数量较少，使用单线程处理")
+            return self._analyze_all_funds_single_thread(all_fund_codes)
+        
+        # 确定线程数量
+        if thread_mode == THREAD_MODE_SINGLE:
+            print("使用单线程模式处理")
+            return self._analyze_all_funds_single_thread(all_fund_codes)
+        elif thread_mode == THREAD_MODE_CUSTOM and custom_thread_count:
+            thread_count = max(1, min(custom_thread_count, multiprocessing.cpu_count() * 2))
+            print(f"使用自定义线程数模式处理，线程数: {thread_count}")
+        else:  # THREAD_MODE_AUTO
+            # 根据CPU核心数自动分配线程数，一般为核心数的1-2倍
+            cpu_count = multiprocessing.cpu_count()
+            thread_count = min(cpu_count * 2, max(4, cpu_count))
+            print(f"使用自动线程分配模式处理，检测到CPU核心数: {cpu_count}，分配线程数: {thread_count}")
+        
+        # 使用线程池进行多线程处理
+        return self._analyze_all_funds_multi_thread(all_fund_codes, thread_count)
+        
+    def _analyze_all_funds_single_thread(self, all_fund_codes):
+        """单线程分析所有基金"""
+        total_funds = len(all_fund_codes)
+        
         for i, fund_code in enumerate(all_fund_codes, 1):
             print(f"分析基金 {i}/{total_funds}: {fund_code}")
             try:
                 self.analyze_single_fund(fund_code)
             except Exception as e:
                 print(f"分析基金 {fund_code} 时出错: {str(e)}")
-
+                
+        return len(self.results) > 0
+        
+    def _analyze_all_funds_multi_thread(self, all_fund_codes, thread_count):
+        """多线程分析所有基金"""
+        total_funds = len(all_fund_codes)
+        processed_count = 0
+        lock = threading.Lock()  # 用于保护共享资源
+        
+        # 定义单个基金的分析函数
+        def analyze_fund(fund_code):
+            nonlocal processed_count
+            try:
+                # 分析单只基金
+                fund_results = {}
+                fund_name = self.get_fund_name(fund_code)
+                df = self.read_fund_data(fund_code)
+                
+                if df is not None and len(df) >= 2:
+                    # 清理数据
+                    df_clean = self._clean_data(df)
+                    
+                    # 计算各项指标
+                    indicators = {}
+                    indicators["年化收益率"] = self._calculate_annualized_return(df_clean)
+                    indicators["上涨日数比例"] = self._calculate_positive_days_ratio(df_clean)
+                    indicators["上涨月数比例"] = self._calculate_positive_months_ratio(df_clean)
+                    indicators["上涨季数比例"] = self._calculate_positive_quarters_ratio(df_clean)
+                    indicators["日涨跌幅标准差"] = self._calculate_daily_volatility(df_clean)
+                    indicators["月涨跌幅标准差"] = self._calculate_monthly_volatility(df_clean)
+                    indicators["月涨跌幅最大值比中值倍数"] = self._calculate_max_to_median_monthly_ratio(df_clean)
+                    indicators["最大回撤率"] = self._calculate_max_drawdown(df_clean)
+                    indicators["第二大回撤率"] = self._calculate_second_max_drawdown(df_clean)
+                    indicators["夏普率"] = self._calculate_sharpe_ratio(df_clean)
+                    indicators["卡玛比率"] = self._calculate_calmar_ratio(df_clean)
+                    indicators["索提诺比率"] = self._calculate_sortino_ratio(df_clean)
+                    indicators["信息比率"] = self._calculate_information_ratio(df_clean)
+                    
+                    # 获取基金信息
+                    fund_info = self._get_fund_info_from_multiple_sources(fund_code)
+                    
+                    # 存储结果
+                    fund_results[fund_code] = {
+                        "name": fund_name,
+                        "indicators": indicators,
+                        "info": fund_info
+                    }
+            except Exception as e:
+                with lock:
+                    print(f"分析基金 {fund_code} 时出错: {str(e)}")
+                return None
+            
+            # 更新处理计数和进度
+            with lock:
+                nonlocal processed_count
+                processed_count += 1
+                print(f"分析基金 {processed_count}/{total_funds}: {fund_code}")
+            
+            return fund_results
+        
+        # 使用线程池
+        with concurrent.futures.ThreadPoolExecutor(max_workers=thread_count) as executor:
+            # 提交所有任务
+            futures = [executor.submit(analyze_fund, fund_code) for fund_code in all_fund_codes]
+            
+            # 收集结果
+            for future in concurrent.futures.as_completed(futures):
+                fund_results = future.result()
+                if fund_results:
+                    # 使用锁保护共享资源的更新
+                    with lock:
+                        self.results.update(fund_results)
+        
         return len(self.results) > 0
 
     def analyze_specific_fund(self, fund_code):
@@ -982,22 +1089,37 @@ def handle_all_funds_quant_analysis(analyzer):
         if not validate_date_format(start_date_str):
             print("日期格式不正确，请使用YYYYMMDD格式")
             # 无需等待用户输入，直接返回
+            return
     else:
         start_date_str = None
 
     # 如果指定了起始日期，重新创建分析器实例
     if start_date_str:
         analyzer = QuantAnalyzer(analyzer.hdf5_path, start_date_str)
+    else:
+        # 即使没有指定起始日期，也创建新实例以确保results为空
+        analyzer = QuantAnalyzer(analyzer.hdf5_path)
 
     print("\n正在准备量化分析...")
     print(
         f"时间范围: {'从' + start_date_str + '开始' if start_date_str else '使用默认时间范围'} 至 {datetime.now().strftime('%Y-%m-%d')}"
     )
     print(f"HDF5文件路径: {analyzer.hdf5_path}")
+    
+    # 获取线程模式
+    thread_mode = get_thread_mode_choice()
+    # 如果用户选择退出，直接返回
+    if thread_mode is None:
+        return
+        
+    custom_thread_count = None
+    
+    if thread_mode == THREAD_MODE_CUSTOM:
+        custom_thread_count = get_custom_thread_count()
 
     try:
         # 执行量化分析
-        success = analyzer.analyze_all_funds()
+        success = analyzer.analyze_all_funds(thread_mode, custom_thread_count)
 
         if success:
             # 导出到Excel，使用All_Fund文件名格式
@@ -1010,6 +1132,46 @@ def handle_all_funds_quant_analysis(analyzer):
         print(f"量化分析过程发生错误: {str(e)}")
 
     # 无需等待用户输入，直接返回
+
+
+def get_thread_mode_choice():
+    """获取用户选择的线程模式"""
+    while True:
+        try:
+            print("\n请选择线程处理模式：")
+            print("1. 单线程模式（适合调试或小数据集）")
+            print("2. 自定义线程数模式")
+            print("3. 自动分配线程数模式（根据CPU性能自动优化）")
+            print("0. 退出")
+            choice = int(input("请输入选择 [0-3]: ").strip())
+            
+            if choice == 0:
+                print("已退出量化分析")
+                return None
+            elif choice in [1, 2, 3]:
+                return choice
+            else:
+                print("请输入有效的选项 [0-3]")
+        except ValueError:
+            print("请输入有效的数字")
+
+
+def get_custom_thread_count():
+    """获取用户自定义的线程数"""
+    max_threads = multiprocessing.cpu_count() * 2
+    print(f"\n系统CPU核心数: {multiprocessing.cpu_count()}")
+    print(f"推荐线程数范围: 1 - {max_threads}")
+    
+    while True:
+        try:
+            thread_count = int(input(f"请输入自定义线程数 [1-{max_threads}]: ").strip())
+            
+            if 1 <= thread_count <= max_threads:
+                return thread_count
+            else:
+                print(f"请输入有效的线程数 [1-{max_threads}]")
+        except ValueError:
+            print("请输入有效的数字")
 
 
 # 处理指定基金的量化分析

@@ -593,8 +593,9 @@ def main():
                         print("\n=== 货币基金排名数据查询 ===")
                         try:
                             import fetch_hbx_fund_ranking
-                            # 调用完整菜单，而仅仅是显示基金代码
-                            fetch_hbx_fund_ranking.main()
+                            import asyncio
+                            # 由于fetch_hbx_fund_ranking.main()是异步函数，需要使用asyncio.run()来运行
+                            asyncio.run(fetch_hbx_fund_ranking.main())
                         except Exception as e:
                             print(f"货币基金数据查询失败: {str(e)}")
                             print("请确保fetch_hbx_fund_ranking.py文件存在且完整")
@@ -610,9 +611,14 @@ def main():
                     elif sub_choice == "7":
                         print("\n=== 综合基金数据查询 ===")
                         try:
-                            import Read_HDF5_Data
-                            # 直接调用Read_HDF5_Data的main函数，使用其完整的菜单系统
-                            Read_HDF5_Data.main()
+                            # 使用shell=False并设置正确的参数以支持交互式输入
+                            subprocess.run([sys.executable, "Read_HDF5_Data.py"], 
+                                          shell=False, 
+                                          stdin=None,  # 允许继承父进程的标准输入
+                                          stdout=None, # 允许继承父进程的标准输出
+                                          stderr=None,
+                                          universal_newlines=True,
+                                          start_new_session=True)
                         except Exception as e:
                             print(f"综合基金数据查询失败: {str(e)}")
                             print("请确保Read_HDF5_Data.py文件存在且完整")

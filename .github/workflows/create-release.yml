@@ -11,34 +11,77 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # 确保有足够的权限创建和管理releases
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: 输出工作流信息
+        run: |
+          echo "工作流触发成功！"
+          echo "触发事件: ${{ github.event_name }}"
+          echo "触发引用: ${{ github.ref }}"
+          echo "仓库: ${{ github.repository }}"
+
+      - name: 检出代码
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # 确保获取所有标签和历史记录
 
-      - name: Get release version
+      - name: 安装Git工具
+        run: sudo apt-get update && sudo apt-get install -y git
+
+      - name: 获取仓库信息和标签列表
+        run: |
+          echo "=== 仓库信息 ==="
+          git config --list
+          echo "=== 可用标签列表 ==="
+          git tag -l
+          echo "=== 当前分支和引用 ==="
+          git branch -a
+          git log --oneline -n 5
+
+      - name: 提取版本号
         id: get_version
         run: |
+          echo "提取版本号从引用: ${{ github.ref }}"
           VERSION=${GITHUB_REF#refs/tags/}
+          echo "提取到的版本号: $VERSION"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Generate release notes
+      - name: 生成发布说明
         id: generate_notes
         run: |
+          echo "开始生成发布说明..."
+          
+          # 显示当前和最近的标签信息
+          echo "当前标签: ${{ steps.get_version.outputs.version }}"
+          
+          # 尝试获取上一个标签，如果不存在则显示信息
           PREVIOUS_TAG=$(git describe --tags --abbrev=0 ${{ steps.get_version.outputs.version }}^ 2>/dev/null || echo "")
           if [ -z "$PREVIOUS_TAG" ]; then
-            # 如果没有之前的标签，获取所有提交
+            echo "警告: 未找到上一个标签，将使用所有提交历史生成发布说明"
+            # 获取所有提交历史
             RELEASE_NOTES=$(git log --pretty=format:"- %s (%an)" HEAD)
           else
+            echo "找到上一个标签: $PREVIOUS_TAG"
             # 获取两个标签之间的提交
             RELEASE_NOTES=$(git log --pretty=format:"- %s (%an)" $PREVIOUS_TAG..${{ steps.get_version.outputs.version }})
           fi
+          
+          # 如果没有生成任何发布说明，使用默认内容
+          if [ -z "$RELEASE_NOTES" ]; then
+            RELEASE_NOTES="- 暂无提交历史记录"
+            echo "警告: 未找到提交历史记录，使用默认内容"
+          else
+            echo "成功生成发布说明，包含 $(echo "$RELEASE_NOTES" | grep -c "^") 条提交记录"
+          fi
+          
+          # 将发布说明写入输出
           echo "release_notes<<EOF" >> $GITHUB_OUTPUT
           echo "$RELEASE_NOTES" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Create Release
+      - name: 创建Release
+        id: create_release
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -56,7 +99,33 @@ jobs:
           draft: false
           prerelease: false
 
-      - name: Upload Release Assets
+      - name: 检查创建Release结果
+        if: success() || failure()
+        run: |
+          echo "Release创建状态: ${{ job.status }}"
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "Release创建成功！"
+          else
+            echo "警告: Release创建可能失败，请检查日志"
+          fi
+
+      - name: 准备发布资产
+        run: |
+          echo "准备发布资产文件..."
+          echo "当前目录内容:"
+          ls -la
+          echo "=== 检查要上传的文件 ==="
+          find . -type f -name "*.py" | sort
+          find . -type f -name "*.md" | sort
+          find . -type f -name "*.txt" | grep -v ".gitignore" | sort
+          if [ -f "requirements.txt" ]; then
+            echo "requirements.txt 存在"
+          else
+            echo "警告: requirements.txt 不存在"
+          fi
+
+      - name: 上传Release资产
+        id: upload_assets
         uses: softprops/action-gh-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -69,3 +138,19 @@ jobs:
             requirements.txt
             !.gitignore
           append_body: false
+          fail_on_unmatched_files: false
+          # 设置为false以避免由于缺少某些文件而导致整个工作流失败
+
+      - name: 工作流完成总结
+        if: always()
+        run: |
+          echo "=== 工作流执行总结 ==="
+          echo "触发引用: ${{ github.ref }}"
+          echo "提取的版本号: ${{ steps.get_version.outputs.version }}"
+          echo "Release URL: ${{ steps.create_release.outputs.html_url || '未生成' }}"
+          echo "工作流状态: ${{ job.status }}"
+          echo "如果工作流失败，请检查日志并确认以下事项:"
+          echo "1. 标签格式是否正确 (v*.*.* 或 V*.*.*)"
+          echo "2. 仓库是否具有正确的权限"
+          echo "3. 是否有足够的提交历史生成发布说明"
+          echo "4. 要上传的文件是否存在"

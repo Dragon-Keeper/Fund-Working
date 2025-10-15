@@ -471,7 +471,8 @@ def show_menu():
 # 主函数
 if __name__ == "__main__":
     try:
-        show_menu()
+        # 调用main函数，这样可以处理命令行参数
+        main()
     except KeyboardInterrupt:
         print("\n程序被用户中断")
     except Exception as e:

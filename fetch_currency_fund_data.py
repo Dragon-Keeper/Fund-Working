@@ -331,7 +331,13 @@ def show_menu():
 
 # 主函数
 if __name__ == "__main__":
-    show_menu()
+    try:
+        # 调用main函数，这样可以处理命令行参数
+        main()
+    except KeyboardInterrupt:
+        print("\n程序被用户中断")
+    except Exception as e:
+        print(f"程序运行出错: {e}")
 
 # 为了被quant_orchestrator调用而添加的main函数
 def main():

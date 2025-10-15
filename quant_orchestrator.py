@@ -249,9 +249,8 @@ class QuantOrchestrator:
         if 3 in modules:
             try:
                 print(f"\n正在下载财经网基金数据...")
-                import fetch_cnjy_fund_data
-
-                fetch_cnjy_fund_data.main()
+                # 使用subprocess调用模块，并传递--auto参数以避免交互式菜单
+                subprocess.run([sys.executable, "fetch_cnjy_fund_data.py", "--auto"], check=True)
                 results["财经网基金数据"] = "下载成功"
             except Exception as e:
                 results["财经网基金数据"] = f"下载失败: {str(e)}"
@@ -260,9 +259,8 @@ class QuantOrchestrator:
         if 4 in modules:
             try:
                 print(f"\n正在下载货币基金数据...")
-                import fetch_currency_fund_data
-
-                fetch_currency_fund_data.main()
+                # 使用subprocess调用模块，并传递--auto参数以避免交互式菜单
+                subprocess.run([sys.executable, "fetch_currency_fund_data.py", "--auto"], check=True)
                 results["货币基金数据"] = "下载成功"
             except Exception as e:
                 results["货币基金数据"] = f"下载失败: {str(e)}"
@@ -271,9 +269,8 @@ class QuantOrchestrator:
         if 5 in modules:
             try:
                 print(f"\n正在下载场内交易基金排名数据...")
-                import fetch_fbs_fund_ranking
-
-                fetch_fbs_fund_ranking.main()
+                # 使用subprocess调用模块，并传递--auto参数以避免交互式菜单
+                subprocess.run([sys.executable, "fetch_fbs_fund_ranking.py", "--auto"], check=True)
                 results["场内交易基金排名数据"] = "下载成功"
             except Exception as e:
                 results["场内交易基金排名数据"] = f"下载失败: {str(e)}"
@@ -282,9 +279,8 @@ class QuantOrchestrator:
         if 6 in modules:
             try:
                 print(f"\n正在下载货币基金排名数据...")
-                import fetch_hbx_fund_ranking
-
-                fetch_hbx_fund_ranking.main()
+                # 使用subprocess调用模块，并传递--auto参数以避免交互式菜单
+                subprocess.run([sys.executable, "fetch_hbx_fund_ranking.py", "--auto"], check=True)
                 results["货币基金排名数据"] = "下载成功"
             except Exception as e:
                 results["货币基金排名数据"] = f"下载失败: {str(e)}"
@@ -293,9 +289,8 @@ class QuantOrchestrator:
         if 7 in modules:
             try:
                 print(f"\n正在下载开放基金排名数据...")
-                import fetch_open_fund_ranking
-
-                fetch_open_fund_ranking.main()
+                # 使用subprocess调用模块，并传递--auto参数以避免交互式菜单
+                subprocess.run([sys.executable, "fetch_open_fund_ranking.py", "--auto"], check=True)
                 results["开放基金排名数据"] = "下载成功"
             except Exception as e:
                 results["开放基金排名数据"] = f"下载失败: {str(e)}"
@@ -304,9 +299,8 @@ class QuantOrchestrator:
         if 8 in modules:
             try:
                 print(f"\n正在执行通达信数据转换...")
-                import TDX_To_HDF5
-
-                TDX_To_HDF5.main()
+                # 使用subprocess调用模块，并传递--auto参数以避免交互式菜单
+                subprocess.run([sys.executable, "TDX_To_HDF5.py", "--auto"], check=True)
                 results["通达信数据转换"] = "转换成功"
             except Exception as e:
                 results["通达信数据转换"] = f"转换失败: {str(e)}"

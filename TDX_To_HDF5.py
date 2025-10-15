@@ -11,6 +11,7 @@ import pickle
 import hashlib
 import psutil
 import platform
+import argparse  # 添加argparse模块导入
 import mmap  # 添加mmap模块导入
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import defaultdict
@@ -736,65 +737,168 @@ def process_all_day_files_optimized(source_dir, storage_file, min_date=None, num
 
 # 主函数
 def main():
-    """主函数"""
-    # 设置源目录和存储文件
-    source_dir = r"D:\SoftWare\TDX\vipdoc\ds\lday"
-    storage_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "All_Fund_Data.h5")
+    """主函数，协调整个TDX数据转HDF5的过程"""
+    # 导入必要的日志模块
+    import logging
     
-    # 检查源目录是否存在，如果不存在则提示用户输入
-    while not os.path.isdir(source_dir):
-        print(f"警告：源目录 '{source_dir}' 不存在或无法访问")
-        user_input = input("请输入通达信基金数据文件(.day)所在目录路径，或输入'q'退出程序: ").strip()
-        if user_input.lower() == 'q':
-            print("退出程序")
-            return
-        elif user_input:
-            source_dir = user_input
-        else:
-            print("目录路径不能为空，请重新输入")
+    # 配置日志
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler("tdx_to_hdf5.log"),
+            logging.StreamHandler()
+        ]
+    )
+    logger = logging.getLogger(__name__)
     
-    # 获取用户输入的最小日期
-    min_date = None
-    date_input = input("请输入最小日期(格式: YYYYMMDD，直接回车则提取所有数据): ").strip()
-    if date_input:
+    # 解析命令行参数
+    parser = argparse.ArgumentParser(description='TDX数据转HDF5格式工具')
+    parser.add_argument('--auto', action='store_true', help='自动模式：使用默认参数执行转换，无需用户交互')
+    parser.add_argument('--source_dir', type=str, help='源数据目录路径（自动模式下可选）')
+    parser.add_argument('--min_date', type=str, help='最小日期，格式为YYYYMMDD（自动模式下可选）')
+    parser.add_argument('--max_workers', type=int, help='最大工作线程数（自动模式下可选）')
+    args = parser.parse_args()
+    
+    # 获取系统信息
+    system_info = get_system_info()
+    logger.info(f"系统信息: {system_info}")
+    print(f"===== TDX数据转HDF5格式工具 =====")
+    print(f"当前时间: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"系统: {system_info}")
+
+    # 默认参数
+    default_source_dir = r"D:\SoftWare\TDX\vipdoc\ds\lday"
+    default_storage_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "All_Fund_Data.h5")
+    
+    if args.auto:
+        # 自动模式：使用默认参数或命令行参数执行
         try:
-            # 验证日期格式
-            if len(date_input) == 8 and date_input.isdigit():
-                year = date_input[:4]
-                month = date_input[4:6]
-                day = date_input[6:8]
-                min_date = f"{year}-{month}-{day}"
-                print(f"将只提取 {min_date} 之后的数据")
+            print("\n自动模式：开始数据转换...")
+            
+            # 使用命令行参数或默认值
+            source_dir = args.source_dir or default_source_dir
+            storage_file = default_storage_file
+            
+            # 处理最小日期
+            min_date = None
+            if args.min_date:
+                date_input = args.min_date
+                try:
+                    if len(date_input) == 8 and date_input.isdigit():
+                        year = date_input[:4]
+                        month = date_input[4:6]
+                        day = date_input[6:8]
+                        min_date = f"{year}-{month}-{day}"
+                        print(f"将只提取 {min_date} 之后的数据")
+                except Exception as e:
+                    logger.warning(f"日期处理出错: {e}，将提取所有数据")
+            
+            # 计算合适的线程数
+            if args.max_workers:
+                num_threads = args.max_workers
             else:
-                print("日期格式不正确，将提取所有数据")
+                # 自动计算线程数
+                num_threads = None
+            
+            logger.info(f"自动模式参数 - 源目录: {source_dir}, 最小日期: {min_date}, 线程数: {num_threads}")
+            print(f"源数据目录: {source_dir}")
+            print(f"最小日期: {min_date or '全部'}")
+            print(f"工作线程数: {'自动计算' if num_threads is None else num_threads}")
+            
+            # 执行数据处理
+            start_time = time.time()
+            process_all_day_files_optimized(source_dir, storage_file, min_date, num_threads)
+            end_time = time.time()
+            
+            elapsed_time = end_time - start_time
+            logger.info(f"自动模式转换完成，耗时: {elapsed_time:.2f}秒")
+            print(f"\n数据转换完成！总耗时: {elapsed_time:.2f}秒")
+            
         except Exception as e:
-            print(f"日期处理出错: {e}，将提取所有数据")
-    
-    # 线程数选择菜单
-    print("\n请选择线程数模式：")
-    print("1. 单线程")
-    print("2. auto自动计算最佳线程数")
-    print("3. 退出")
-    
-    while True:
-        choice = input("请输入选择 (1-3): ").strip()
+            logger.error(f"自动模式执行失败: {str(e)}")
+            print(f"\n错误：在自动模式下执行时发生异常: {str(e)}")
+    else:
+        # 交互式模式
+        # 检查源目录是否存在，如果不存在则提示用户输入
+        source_dir = default_source_dir
+        storage_file = default_storage_file
         
-        if choice == "1":
-            num_threads = 1
-            print("将使用单线程处理数据")
-            break
-        elif choice == "2":
-            num_threads = None  # 将自动计算
-            print("将根据系统资源自动计算最优线程数")
-            break
-        elif choice == "3":
-            print("退出程序")
-            return
-        else:
-            print("无效的选择，请重新输入")
-    
-    # 处理所有.day文件
-    process_all_day_files_optimized(source_dir, storage_file, min_date, num_threads)
+        while not os.path.isdir(source_dir):
+            print(f"警告：源目录 '{source_dir}' 不存在或无法访问")
+            user_input = input("请输入通达信基金数据文件(.day)所在目录路径，或输入'q'退出程序: ").strip()
+            if user_input.lower() == 'q':
+                print("退出程序")
+                return
+            elif user_input:
+                source_dir = user_input
+            else:
+                print("目录路径不能为空，请重新输入")
+        
+        # 获取用户输入的最小日期
+        min_date = None
+        date_input = input("请输入最小日期(格式: YYYYMMDD，直接回车则提取所有数据): ").strip()
+        if date_input:
+            try:
+                # 验证日期格式
+                if len(date_input) == 8 and date_input.isdigit():
+                    year = date_input[:4]
+                    month = date_input[4:6]
+                    day = date_input[6:8]
+                    min_date = f"{year}-{month}-{day}"
+                    print(f"将只提取 {min_date} 之后的数据")
+                else:
+                    print("日期格式不正确，将提取所有数据")
+            except Exception as e:
+                print(f"日期处理出错: {e}，将提取所有数据")
+        
+        # 线程数选择菜单
+        print("\n请选择线程数模式：")
+        print("1. 单线程")
+        print("2. auto自动计算最佳线程数")
+        print("3. 退出")
+        
+        while True:
+            choice = input("请输入选择 (1-3): ").strip()
+            
+            if choice == "1":
+                num_threads = 1
+                print("将使用单线程处理数据")
+                break
+            elif choice == "2":
+                num_threads = None  # 将自动计算
+                print("将根据系统资源自动计算最优线程数")
+                break
+            elif choice == "3":
+                print("退出程序")
+                return
+            else:
+                print("无效的选择，请重新输入")
+        
+        # 执行数据处理
+        try:
+            print("\n开始数据转换...")
+            start_time = time.time()
+            process_all_day_files_optimized(source_dir, storage_file, min_date, num_threads)
+            end_time = time.time()
+            
+            elapsed_time = end_time - start_time
+            logger.info(f"转换完成，耗时: {elapsed_time:.2f}秒")
+            print(f"\n数据转换完成！总耗时: {elapsed_time:.2f}秒")
+        except Exception as e:
+            logger.error(f"数据转换失败: {str(e)}")
+            print(f"\n错误：数据转换时发生异常: {str(e)}")
+
+    print(f"\n程序结束于: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print("=====================================")
+    logger.info("程序执行结束")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n程序已被用户中断")
+    except Exception as e:
+        print(f"\n程序运行时发生错误: {str(e)}")
+        # 使用简单打印替代logger，避免在导入失败时出错
+        print(f"日志记录失败: {str(e)}")

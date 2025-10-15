@@ -3,6 +3,8 @@ import asyncio
 import re
 import h5py
 import os
+import sys
+import argparse
 from datetime import datetime
 from playwright.async_api import async_playwright
 
@@ -560,10 +562,46 @@ def show_menu():
 
 
 # 主函数
-if __name__ == "__main__":
-    show_menu()
+async def main():
+    """主函数，协调整个爬取和存储过程"""
+    # 解析命令行参数
+    parser = argparse.ArgumentParser(description='货币基金数据爬取与存储系统')
+    parser.add_argument('--auto', action='store_true', help='自动模式：仅执行数据下载操作')
+    args = parser.parse_args()
+    
+    print("===== 货币基金数据爬取与存储系统 =====")
+    print(f"当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-# 为了被quant_orchestrator调用而添加的main函数
-def main():
-    """被量化调度器调用的主函数"""
-    show_menu()
+    if args.auto:
+        # 自动模式：直接执行下载操作
+        try:
+            print("\n自动模式：开始下载货币基金数据...")
+            # 运行异步函数
+            fund_data_list = await fetch_currency_fund_data()
+            
+            if fund_data_list:
+                print(f"成功获取 {len(fund_data_list)} 只货币基金数据")
+                # 存储数据到HDF5文件
+                store_fund_data_to_hdf5(fund_data_list)
+                print(f"数据已成功保存到 {HDF5_PATH}")
+            else:
+                print("未获取到任何货币基金数据")
+                
+            print("\n货币基金数据下载完成！")
+        except Exception as e:
+            print(f"\n错误：在自动模式下执行时发生异常: {e}")
+    else:
+        # 正常模式：显示交互式菜单
+        show_menu()
+
+    print(f"\n程序结束于: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("=====================================")
+
+# 启动异步主函数
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n程序已被用户中断")
+    except Exception as e:
+        print(f"\n程序运行时发生错误: {e}")

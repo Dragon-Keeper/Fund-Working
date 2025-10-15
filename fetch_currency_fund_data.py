@@ -4,6 +4,8 @@ import asyncio
 import re
 import h5py
 import os
+import sys
+import argparse
 import pandas as pd
 from datetime import datetime
 from playwright.async_api import async_playwright
@@ -334,4 +336,14 @@ if __name__ == "__main__":
 # 为了被quant_orchestrator调用而添加的main函数
 def main():
     """被量化调度器调用的主函数"""
-    show_menu()
+    # 解析命令行参数
+    parser = argparse.ArgumentParser(description='货币基金数据管理系统')
+    parser.add_argument('--auto', action='store_true', help='自动模式：仅执行数据下载操作')
+    args = parser.parse_args()
+    
+    if args.auto:
+        # 自动模式：直接执行下载操作
+        download_all_currency_funds()
+    else:
+        # 正常模式：显示菜单
+        show_menu()

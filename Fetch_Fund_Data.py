@@ -9,6 +9,7 @@
 
 import os
 import sys
+import argparse
 import time
 import requests
 import re
@@ -587,112 +588,167 @@ def verify_fund_data(fund_data):
 # 主函数
 def main():
     """主函数，协调整个爬取和存储过程，提供菜单驱动的用户界面"""
+    # 解析命令行参数
+    parser = argparse.ArgumentParser(description='开放式基金数据管理系统')
+    parser.add_argument('--auto', action='store_true', help='自动模式：仅执行数据下载操作')
+    args = parser.parse_args()
+    
     logger.info("===== 基金数据爬取与存储系统启动 =====")
 
     try:
         # 检查依赖
         check_and_install_dependencies()
 
-        while True:
-            # 显示菜单
-            show_menu()
+        if args.auto:
+            # 自动模式：直接执行下载操作
+            try:
+                # 获取总页数
+                total_pages = get_total_pages()
+                if total_pages <= 0:
+                    logger.error("无法获取总页数，操作取消")
+                    print("\n错误：无法获取总页数，请检查网络连接或网站是否可访问！")
+                    return
 
-            # 获取用户选择
-            choice = input("请输入您的选择 (0-2): ")
+                logger.info(f"将爬取 {total_pages} 页基金数据")
+                print(f"\n检测到总页数: {total_pages} 页")
 
-            # 根据选择执行相应操作
-            if choice == "1":
-                # 下载所有页面的开放式基金数据
-                try:
-                    # 获取总页数
-                    total_pages = get_total_pages()
-                    if total_pages <= 0:
-                        logger.error("无法获取总页数，操作取消")
-                        print(
-                            "\n错误：无法获取总页数，请检查网络连接或网站是否可访问！"
+                # 批量获取基金数据
+                logger.info("开始爬取基金数据...")
+                print("\n开始爬取基金数据，请稍候...")
+                all_fund_data = batch_fetch_fund_data(total_pages)
+
+                if not all_fund_data:
+                    logger.error("未获取到任何基金数据")
+                    print("\n错误：未获取到任何基金数据！")
+                    return
+
+                # 验证数据
+                logger.info("开始验证数据...")
+                print("\n开始验证数据...")
+                if verify_fund_data(all_fund_data):
+                    # 存储所有数据
+                    hdf5_path = get_hdf5_path()
+                    logger.info(f"开始将数据存储到HDF5文件: {hdf5_path}")
+                    print(f"\n开始将数据存储到HDF5文件: {hdf5_path}")
+                    store_fund_data_to_hdf5(all_fund_data, hdf5_path)
+                    logger.info("数据存储完成")
+                    print("\n数据存储完成")
+
+                    # 显示最终统计信息
+                    logger.info(f"===== 任务完成 =====")
+                    logger.info(f"总页数: {total_pages}")
+                    logger.info(f"成功爬取基金数量: {len(all_fund_data)}")
+                    logger.info(f"数据已存储到: {hdf5_path}")
+                    print(f"\n===== 任务完成 =====")
+                    print(f"总页数: {total_pages}")
+                    print(f"成功爬取基金数量: {len(all_fund_data)}")
+                    print(f"数据已存储到: {hdf5_path}")
+                else:
+                    logger.error("数据验证失败")
+                    print("\n错误：数据验证失败，可能需要检查爬取逻辑！")
+            except Exception as e:
+                logger.error(f"下载数据时发生错误: {e}")
+                print(f"\n错误：下载数据时发生异常: {e}")
+        else:
+            # 正常模式：显示交互式菜单
+            while True:
+                # 显示菜单
+                show_menu()
+
+                # 获取用户选择
+                choice = input("请输入您的选择 (0-2): ")
+
+                # 根据选择执行相应操作
+                if choice == "1":
+                    # 下载所有页面的开放式基金数据
+                    try:
+                        # 获取总页数
+                        total_pages = get_total_pages()
+                        if total_pages <= 0:
+                            logger.error("无法获取总页数，操作取消")
+                            print("\n错误：无法获取总页数，请检查网络连接或网站是否可访问！")
+                            continue
+
+                        logger.info(f"将爬取 {total_pages} 页基金数据")
+                        print(f"\n检测到总页数: {total_pages} 页")
+
+                        # 获取用户确认
+                        confirm = input(
+                            f"即将爬取 {total_pages} 页基金数据，这可能需要一些时间。是否继续？(y/n): "
                         )
-                        continue
+                        if confirm.lower() != "y":
+                            logger.info("用户取消操作")
+                            print("\n操作已取消")
+                            continue
 
-                    logger.info(f"将爬取 {total_pages} 页基金数据")
-                    print(f"\n检测到总页数: {total_pages} 页")
+                        # 批量获取基金数据
+                        logger.info("开始爬取基金数据...")
+                        print("\n开始爬取基金数据，请稍候...")
+                        all_fund_data = batch_fetch_fund_data(total_pages)
 
-                    # 获取用户确认
-                    confirm = input(
-                        f"即将爬取 {total_pages} 页基金数据，这可能需要一些时间。是否继续？(y/n): "
-                    )
-                    if confirm.lower() != "y":
-                        logger.info("用户取消操作")
-                        print("\n操作已取消")
-                        continue
+                        if not all_fund_data:
+                            logger.error("未获取到任何基金数据")
+                            print("\n错误：未获取到任何基金数据！")
+                            continue
 
-                    # 批量获取基金数据
-                    logger.info("开始爬取基金数据...")
-                    print("\n开始爬取基金数据，请稍候...")
-                    all_fund_data = batch_fetch_fund_data(total_pages)
+                        # 验证数据
+                        logger.info("开始验证数据...")
+                        print("\n开始验证数据...")
+                        if verify_fund_data(all_fund_data):
+                            # 存储所有数据
+                            hdf5_path = get_hdf5_path()
+                            logger.info(f"开始将数据存储到HDF5文件: {hdf5_path}")
+                            print(f"\n开始将数据存储到HDF5文件: {hdf5_path}")
+                            store_fund_data_to_hdf5(all_fund_data, hdf5_path)
+                            logger.info("数据存储完成")
+                            print("\n数据存储完成")
 
-                    if not all_fund_data:
-                        logger.error("未获取到任何基金数据")
-                        print("\n错误：未获取到任何基金数据！")
-                        continue
+                            # 显示最终统计信息
+                            logger.info(f"===== 任务完成 =====")
+                            logger.info(f"总页数: {total_pages}")
+                            logger.info(f"成功爬取基金数量: {len(all_fund_data)}")
+                            logger.info(f"数据已存储到: {hdf5_path}")
+                            print(f"\n===== 任务完成 =====")
+                            print(f"总页数: {total_pages}")
+                            print(f"成功爬取基金数量: {len(all_fund_data)}")
+                            print(f"数据已存储到: {hdf5_path}")
+                        else:
+                            logger.error("数据验证失败")
+                            print("\n错误：数据验证失败，可能需要检查爬取逻辑！")
+                    except Exception as e:
+                        logger.error(f"下载数据时发生错误: {e}")
+                        print(f"\n错误：下载数据时发生异常: {e}")
 
-                    # 验证数据
-                    logger.info("开始验证数据...")
-                    print("\n开始验证数据...")
-                    if verify_fund_data(all_fund_data):
-                        # 存储所有数据
-                        hdf5_path = get_hdf5_path()
-                        logger.info(f"开始将数据存储到HDF5文件: {hdf5_path}")
-                        print(f"\n开始将数据存储到HDF5文件: {hdf5_path}")
-                        store_fund_data_to_hdf5(all_fund_data, hdf5_path)
-                        logger.info("数据存储完成")
-                        print("\n数据存储完成")
+                elif choice == "2":
+                    # 查询开放式基金数据
+                    try:
+                        fund_code = input("请输入基金代码: ").strip()
+                        if not fund_code:
+                            print("错误：基金代码不能为空")
+                            continue
 
-                        # 显示最终统计信息
-                        logger.info(f"===== 任务完成 =====")
-                        logger.info(f"总页数: {total_pages}")
-                        logger.info(f"成功爬取基金数量: {len(all_fund_data)}")
-                        logger.info(f"数据已存储到: {hdf5_path}")
-                        print(f"\n===== 任务完成 =====")
-                        print(f"总页数: {total_pages}")
-                        print(f"成功爬取基金数量: {len(all_fund_data)}")
-                        print(f"数据已存储到: {hdf5_path}")
-                    else:
-                        logger.error("数据验证失败")
-                        print("\n错误：数据验证失败，可能需要检查爬取逻辑！")
-                except Exception as e:
-                    logger.error(f"下载数据时发生错误: {e}")
-                    print(f"\n错误：下载数据时发生异常: {e}")
+                        query_fund_by_code(fund_code)
+                    except Exception as e:
+                        logger.error(f"查询基金数据时发生错误: {e}")
+                        print(f"\n错误：查询过程中发生异常: {e}")
 
-            elif choice == "2":
-                # 查询开放式基金数据
-                try:
-                    fund_code = input("请输入基金代码: ").strip()
-                    if not fund_code:
-                        print("错误：基金代码不能为空")
-                        continue
+                elif choice == "3":
+                    # 查看所有基金代码
+                    try:
+                        show_all_fund_codes()
+                    except Exception as e:
+                        logger.error(f"显示基金代码时发生错误: {e}")
+                        print(f"\n错误：显示基金代码时发生异常: {e}")
 
-                    query_fund_by_code(fund_code)
-                except Exception as e:
-                    logger.error(f"查询基金数据时发生错误: {e}")
-                    print(f"\n错误：查询过程中发生异常: {e}")
+                elif choice == "0":
+                    # 退出程序
+                    logger.info("用户选择退出程序")
+                    print("\n感谢使用基金数据管理系统，再见！")
+                    break
 
-            elif choice == "3":
-                # 查看所有基金代码
-                try:
-                    show_all_fund_codes()
-                except Exception as e:
-                    logger.error(f"显示基金代码时发生错误: {e}")
-                    print(f"\n错误：显示基金代码时发生异常: {e}")
-
-            elif choice == "0":
-                # 退出程序
-                logger.info("用户选择退出程序")
-                print("\n感谢使用基金数据管理系统，再见！")
-                break
-
-            else:
-                # 无效选择
-                print("错误：请输入有效的选项 (0-2)")
+                else:
+                    # 无效选择
+                    print("错误：请输入有效的选项 (0-2)")
 
     except KeyboardInterrupt:
         logger.info("用户中断操作")

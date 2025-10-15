@@ -5,6 +5,8 @@ on:
     tags:
       - 'v*.*.*'
       - 'V*.*.*'
+      - 'v*.*'
+      - 'V*.*'
 
 jobs:
   create-release:

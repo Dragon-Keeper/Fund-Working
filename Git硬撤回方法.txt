@@ -1,0 +1,3 @@
+git log --oneline
+git reset --hard <Ìá½»ID>
+git push -f origin master

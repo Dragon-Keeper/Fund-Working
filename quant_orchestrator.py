@@ -212,7 +212,7 @@ class QuantOrchestrator:
 
         # 如果没有指定模块，默认全部执行
         if modules is None:
-            modules = [1, 2, 3, 4, 5, 6, 7, 8]
+            modules = [1, 2, 3, 4, 5, 6, 7, 8, 9]
             print(f"\n正在执行全部基金数据下载...")
         else:
             print(f"\n正在执行选定的基金数据下载模块...")
@@ -304,6 +304,18 @@ class QuantOrchestrator:
                 results["通达信数据转换"] = "转换成功"
             except Exception as e:
                 results["通达信数据转换"] = f"转换失败: {str(e)}"
+        
+        # 下载基金基本面概况数据
+        if 9 in modules:
+            try:
+                print(f"\n正在打开基金基本面概况管理系统...")
+                # 使用subprocess调用模块，不传递--auto参数以显示交互式菜单
+                subprocess.run([sys.executable, "Fund_Fundamental_Overview_Manager.py"], check=True)
+                results["基金基本面概况数据"] = "操作完成"
+            except subprocess.CalledProcessError as e:
+                results["基金基本面概况数据"] = f"操作失败: {str(e)}"
+            except Exception as e:
+                results["基金基本面概况数据"] = f"操作异常: {str(e)}"
 
         return results
 
@@ -364,6 +376,7 @@ def show_module_selection_menu():
     print("6. 货币基金排名数据 [fetch_hbx_fund_ranking.py]")
     print("7. 开放基金排名数据 [fetch_open_fund_ranking.py]")
     print("8. 通达信转换功能 [TDX_To_HDF5.py]")
+    print("9. 基金基本面概况数据 [Fund_Fundamental_Overview_Manager.py]")
 
     try:
         # 获取用户输入的模块选择
@@ -381,8 +394,8 @@ def show_module_selection_menu():
                 choice = choice.strip()
                 if choice.isdigit():
                     module_num = int(choice)
-                    if 1 <= module_num <= 8:
-                        selected_modules.append(module_num)
+                    if 1 <= module_num <= 9:
+                            selected_modules.append(module_num)
 
         return selected_modules
     except Exception as e:
@@ -487,13 +500,23 @@ def main():
                     print("5. 货币基金排名数据 (fetch_hbx_fund_ranking.py)")
                     print("6. 开放基金排名数据 (fetch_open_fund_ranking.py)")
                     print("7. 综合基金数据 (Read_HDF5_Data.py)")
-                    print("8. 基金申购状态管理")
+                    print("8. 基金基本信息及申购状态管理")
+                    print("9. 基金基本面概况数据 (Fund_Fundamental_Overview_Manager.py)")
                     print("0. 返回主菜单")
                     
                     sub_choice = input("请输入功能选项: ").strip()
                     
                     if sub_choice == "0":
                         break  # 退出查询功能菜单，返回主菜单
+                    elif sub_choice == "1":
+                        print("\n=== 财经网基金数据查询 ===")
+                        try:
+                            import fetch_cnjy_fund_data
+                            # 调用完整菜单，而不仅仅是显示基金代码
+                            fetch_cnjy_fund_data.main()
+                        except Exception as e:
+                            print(f"财经网基金数据查询失败: {str(e)}")
+                            print("请确保fetch_cnjy_fund_data.py文件存在且完整")
                     elif sub_choice == "8":
                         # 基金申购状态管理子菜单
                         while True:
@@ -504,7 +527,6 @@ def main():
                             print("4. 按申购状态筛选基金")
                             print("5. 显示所有基金代码")
                             print("0. 返回上一级菜单")
-                            
                             申购_status_sub_choice = input("请输入功能选项: ").strip()
                             
                             if 申购_status_sub_choice == "0":
@@ -551,17 +573,18 @@ def main():
                                     display_all_fund_codes()
                                 except Exception as e:
                                     print(f"显示过程发生错误: {str(e)}")
-                            else:
-                                print("无效的功能选项，请重新输入")
-                    elif sub_choice == "1":
-                        print("\n=== 财经网基金数据查询 ===")
+                    elif sub_choice == "9":
+                        print("\n=== 基金基本面概况数据查询 ===")
                         try:
-                            import fetch_cnjy_fund_data
-                            # 调用完整菜单，而不仅仅是显示基金代码
-                            fetch_cnjy_fund_data.main()
+                            import Fund_Fundamental_Overview_Manager
+                            # 设置正确的HDF5文件路径
+                            import os
+                            target_hdf5_path = os.path.join(os.getcwd(), 'data', 'Fund_Fundamental_Overview.h5')
+                            Fund_Fundamental_Overview_Manager.query_fund_overview(target_hdf5_path)
                         except Exception as e:
-                            print(f"财经网基金数据查询失败: {str(e)}")
-                            print("请确保fetch_cnjy_fund_data.py文件存在且完整")
+                            print(f"基金基本面概况数据查询失败: {str(e)}")
+                            print("请确保Fund_Fundamental_Overview_Manager.py文件存在且完整")
+                            input("按Enter键继续...")
                     elif sub_choice == "2":
                         print("\n=== 货币基金数据查询 ===")
                         try:

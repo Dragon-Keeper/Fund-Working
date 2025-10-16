@@ -15,6 +15,7 @@ import numpy as np
 import h5py
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
+import math
 
 # 确保中文显示正常
 import matplotlib
@@ -39,6 +40,9 @@ class FundQuantAnalysisReport:
         self.fund_purchase_status_path = os.path.join(self.data_dir, "Fund_Purchase_Status.h5")
         self.fund_fundamental_overview_path = os.path.join(self.data_dir, "Fund_Fundamental_Overview.h5")
         self.all_fund_data_path = os.path.join(self.data_dir, "All_Fund_Data.h5")
+        
+        # 测试限制
+        self.TEST_LIMIT = None
         
         # 检查必要文件是否存在
         self._check_required_files()
@@ -127,13 +131,17 @@ class FundQuantAnalysisReport:
                 df = df.sort_values('date')
                 
                 # 筛选日期范围
-                mask = (df['date'] >= start_date) & (df['date'] <= end_date)
-                df_filtered = df[mask].copy()
-                
-                if df_filtered.empty:
-                    return None
-                
-                return df_filtered
+                if start_date is not None and end_date is not None:
+                    mask = (df['date'] >= start_date) & (df['date'] <= end_date)
+                    df_filtered = df[mask].copy()
+                    
+                    if df_filtered.empty:
+                        return None
+                    
+                    return df_filtered
+                else:
+                    # 如果没有指定日期范围，返回完整数据
+                    return df.copy()
             else:
                 # 如果没有提供文件句柄，使用传统方式
                 with h5py.File(self.all_fund_data_path, 'r') as hf_new:
@@ -160,13 +168,17 @@ class FundQuantAnalysisReport:
                     df = df.sort_values('date')
                     
                     # 筛选日期范围
-                    mask = (df['date'] >= start_date) & (df['date'] <= end_date)
-                    df_filtered = df[mask].copy()
-                    
-                    if df_filtered.empty:
-                        return None
-                    
-                    return df_filtered
+                    if start_date is not None and end_date is not None:
+                        mask = (df['date'] >= start_date) & (df['date'] <= end_date)
+                        df_filtered = df[mask].copy()
+                        
+                        if df_filtered.empty:
+                            return None
+                        
+                        return df_filtered
+                    else:
+                        # 如果没有指定日期范围，返回完整数据
+                        return df.copy()
         except Exception as e:
             # 静默处理错误，避免过多输出
             # print(f"读取基金 {fund_code} 净值数据时出错: {e}")
@@ -234,6 +246,387 @@ class FundQuantAnalysisReport:
         except Exception as e:
             print(f"计算上涨星期比例时出错: {e}")
             return None
+    
+    def _calculate_quarterly_volatility(self, df):
+        """计算季度涨跌幅标准差"""
+        if len(df) < 2:
+            return None
+        
+        try:
+            df_quarterly = df.set_index("date").resample("QE").last()
+            df_quarterly["quarterly_return"] = df_quarterly["close"].pct_change(fill_method=None)
+            
+            if len(df_quarterly) < 2:
+                return None
+            
+            # 计算标准差并年化
+            volatility = df_quarterly["quarterly_return"].std() * math.sqrt(4)
+            return round(volatility * 100, 2)
+        except Exception as e:
+            print(f"计算季度涨跌幅标准差时出错: {e}")
+            return None
+    
+    def _calculate_monthly_volatility(self, df):
+        """计算月涨跌幅标准差"""
+        if len(df) < 2:
+            return None
+        
+        try:
+            df_monthly = df.set_index("date").resample("ME").last()
+            df_monthly["monthly_return"] = df_monthly["close"].pct_change(fill_method=None)
+            
+            if len(df_monthly) < 2:
+                return None
+            
+            # 计算标准差并年化
+            volatility = df_monthly["monthly_return"].std() * math.sqrt(12)
+            return round(volatility * 100, 2)
+        except Exception as e:
+            print(f"计算月涨跌幅标准差时出错: {e}")
+            return None
+    
+    def _calculate_weekly_volatility(self, df):
+        """计算周涨跌幅标准差"""
+        if len(df) < 2:
+            return None
+        
+        try:
+            df_weekly = df.set_index("date").resample("W").last()
+            df_weekly["weekly_return"] = df_weekly["close"].pct_change(fill_method=None)
+            
+            if len(df_weekly) < 2:
+                return None
+            
+            # 计算标准差并年化
+            volatility = df_weekly["weekly_return"].std() * math.sqrt(52)
+            return round(volatility * 100, 2)
+        except Exception as e:
+            print(f"计算周涨跌幅标准差时出错: {e}")
+            return None
+    
+    def _calculate_annualized_return(self, df):
+        """计算年化收益率"""
+        if len(df) < 2:
+            return None
+        
+        try:
+            # 计算总收益率
+            total_return = (df["close"].iloc[-1] / df["close"].iloc[0]) - 1
+            
+            # 计算持仓天数
+            days = (df["date"].iloc[-1] - df["date"].iloc[0]).days
+            
+            if days == 0:
+                return None
+            
+            # 计算年化收益率
+            annualized_return = ((1 + total_return) ** (365.25 / days)) - 1
+            return round(annualized_return * 100, 2)
+        except Exception as e:
+            print(f"计算年化收益率时出错: {e}")
+            return None
+    
+    def _calculate_max_drawdown(self, df):
+        """计算最大回撤率"""
+        if len(df) < 2:
+            return None
+        
+        try:
+            # 计算累计最大值
+            df["cumulative_max"] = df["close"].cummax()
+            
+            # 计算回撤
+            df["drawdown"] = (df["close"] / df["cumulative_max"]) - 1
+            
+            # 最大回撤
+            max_drawdown = df["drawdown"].min()
+            return round(max_drawdown * 100, 2)
+        except Exception as e:
+            print(f"计算最大回撤率时出错: {e}")
+            return None
+    
+    def _calculate_second_max_drawdown(self, df):
+        """计算第二大回撤"""
+        if len(df) < 2:
+            return None
+        
+        try:
+            # 计算累计最大值
+            df["cumulative_max"] = df["close"].cummax()
+            
+            # 计算回撤
+            df["drawdown"] = (df["close"] / df["cumulative_max"]) - 1
+            
+            # 找到最大回撤的位置
+            max_drawdown_idx = df["drawdown"].idxmin()
+            
+            # 分割数据，避开最大回撤区域
+            df_before = df.loc[:max_drawdown_idx - 1]
+            df_after = df.loc[max_drawdown_idx + 1:]
+            
+            # 找出第二大回撤
+            second_max_drawdown = None
+            
+            if not df_before.empty:
+                second_max_drawdown = df_before["drawdown"].min()
+            
+            if not df_after.empty:
+                after_drawdown = df_after["drawdown"].min()
+                if second_max_drawdown is None or after_drawdown < second_max_drawdown:
+                    second_max_drawdown = after_drawdown
+            
+            return round(second_max_drawdown * 100, 2) if second_max_drawdown is not None else None
+        except Exception as e:
+            print(f"计算第二大回撤时出错: {e}")
+            return None
+    
+    def _calculate_sharpe_ratio(self, df, risk_free_rate=0.02):
+        """计算夏普率"""
+        if len(df) < 2:
+            return None
+        
+        try:
+            # 计算日收益率
+            df["daily_return"] = df["close"].pct_change(fill_method=None)
+            
+            # 计算平均日收益率和标准差
+            avg_daily_return = df["daily_return"].mean()
+            daily_volatility = df["daily_return"].std()
+            
+            if daily_volatility == 0:
+                return None
+            
+            # 计算年化夏普率
+            sharpe_ratio = (avg_daily_return * 252 - risk_free_rate) / (daily_volatility * math.sqrt(252))
+            return round(sharpe_ratio, 2)
+        except Exception as e:
+            print(f"计算夏普率时出错: {e}")
+            return None
+    
+    def _calculate_calmar_ratio(self, df):
+        """计算卡玛率"""
+        if len(df) < 2:
+            return None
+        
+        try:
+            # 计算年化收益率
+            annualized_return = self._calculate_annualized_return(df)
+            if annualized_return is None:
+                return None
+            annualized_return = annualized_return / 100
+            
+            # 计算最大回撤
+            max_drawdown = self._calculate_max_drawdown(df)
+            if max_drawdown is None:
+                return None
+            max_drawdown = abs(max_drawdown / 100)
+            
+            if max_drawdown == 0:
+                return None
+            
+            # 计算卡玛率
+            calmar_ratio = annualized_return / max_drawdown
+            return round(calmar_ratio, 2)
+        except Exception as e:
+            print(f"计算卡玛率时出错: {e}")
+            return None
+    
+    def _calculate_ols_discrete_coefficient(self, df):
+        """计算OLS离散系数"""
+        if len(df) < 2:
+            return None
+        
+        try:
+            # 计算日收益率
+            df["daily_return"] = df["close"].pct_change(fill_method=None).dropna()
+            
+            if len(df["daily_return"]) < 2:
+                return None
+            
+            # 计算平均值
+            mean_return = df["daily_return"].mean()
+            
+            # 计算标准差
+            std_return = df["daily_return"].std()
+            
+            if mean_return == 0:
+                return None
+            
+            # 计算离散系数
+            discrete_coefficient = std_return / abs(mean_return)
+            return round(discrete_coefficient, 2)
+        except Exception as e:
+            print(f"计算OLS离散系数时出错: {e}")
+            return None
+    
+    def _calculate_period_returns(self, df, periods):
+        """计算不同时间周期的涨跌幅
+        
+        Args:
+            df: 基金净值数据
+            periods: 时间周期列表，如['1M', '2M', '3M', '6M', '1Y', '9M', '12M']
+        """
+        results = {}
+        
+        try:
+            for period in periods:
+                # 获取相应的天数
+                if period == '1W':
+                    days = 7
+                elif period == '1M':
+                    days = 30
+                elif period == '2M':
+                    days = 60
+                elif period == '3M':
+                    days = 90
+                elif period == '6M':
+                    days = 180
+                elif period == '9M':
+                    days = 270
+                elif period == '12M':
+                    days = 360
+                elif period == '1Y':
+                    days = 365
+                elif period == '2Y':
+                    days = 730
+                elif period == '3Y':
+                    days = 1095
+                else:
+                    continue
+                
+                # 筛选时间范围内的数据
+                end_date = df["date"].max()
+                start_date = end_date - datetime.timedelta(days=days)
+                
+                period_df = df[(df["date"] >= start_date) & (df["date"] <= end_date)]
+                
+                if len(period_df) < 2:
+                    results[period] = None
+                    continue
+                
+                # 计算涨跌幅
+                return_pct = (period_df["close"].iloc[-1] / period_df["close"].iloc[0] - 1) * 100
+                results[period] = round(return_pct, 2)
+        except Exception as e:
+            print(f"计算周期涨跌幅时出错: {e}")
+        
+        return results
+    
+    def _calculate_yearly_returns(self, df, years):
+        """计算特定年份的涨跌幅
+        
+        Args:
+            df: 基金净值数据
+            years: 年份列表，如[2024, 2025]
+        """
+        results = {}
+        
+        try:
+            for year in years:
+                # 筛选年份数据
+                year_df = df[df["date"].dt.year == year]
+                
+                if len(year_df) < 2:
+                    results[str(year)] = None
+                    continue
+                
+                # 计算涨跌幅
+                return_pct = (year_df["close"].iloc[-1] / year_df["close"].iloc[0] - 1) * 100
+                results[str(year)] = round(return_pct, 2)
+        except Exception as e:
+            print(f"计算年份涨跌幅时出错: {e}")
+        
+        return results
+    
+    def _calculate_max_monthly_abnormal(self, df):
+        """计算月涨跌幅最大异常"""
+        if len(df) < 2:
+            return None
+        
+        try:
+            # 计算月度收益率
+            df_monthly = df.set_index("date").resample("ME").last()
+            df_monthly["monthly_return"] = df_monthly["close"].pct_change(fill_method=None)
+            
+            if len(df_monthly) < 2:
+                return None
+            
+            # 计算标准差
+            std = df_monthly["monthly_return"].std()
+            
+            # 找出最大的异常值（与平均值的偏离）
+            mean = df_monthly["monthly_return"].mean()
+            df_monthly["deviation"] = abs(df_monthly["monthly_return"] - mean) / std
+            
+            max_abnormal = df_monthly["deviation"].max()
+            return round(max_abnormal, 2)
+        except Exception as e:
+            print(f"计算月涨跌幅最大异常时出错: {e}")
+            return None
+    
+    def _calculate_monthly_return_range(self, df):
+        """计算近一月涨跌幅范围"""
+        if len(df) < 2:
+            return None
+        
+        try:
+            # 获取最近一个月的数据
+            end_date = df["date"].max()
+            start_date = end_date - datetime.timedelta(days=30)
+            
+            month_df = df[(df["date"] >= start_date) & (df["date"] <= end_date)]
+            
+            if len(month_df) < 2:
+                return None
+            
+            # 计算日收益率
+            month_df["daily_return"] = month_df["close"].pct_change(fill_method=None).dropna()
+            
+            if len(month_df["daily_return"]) == 0:
+                return None
+            
+            # 计算最大和最小日收益率
+            max_daily_return = month_df["daily_return"].max() * 100
+            min_daily_return = month_df["daily_return"].min() * 100
+            
+            return f"{round(min_daily_return, 2)}% ~ {round(max_daily_return, 2)}%"
+        except Exception as e:
+            print(f"计算近一月涨跌幅范围时出错: {e}")
+            return None
+    
+    def _calculate_period_metrics(self, df, days):
+        """计算指定天数范围内的所有指标
+        
+        Args:
+            df: 完整的基金净值数据
+            days: 天数范围
+        """
+        # 筛选时间范围
+        end_date = df["date"].max()
+        start_date = end_date - datetime.timedelta(days=days)
+        
+        period_df = df[(df["date"] >= start_date) & (df["date"] <= end_date)]
+        
+        if len(period_df) < 2:
+            return None
+        
+        # 计算所有指标
+        metrics = {
+            'positive_quarters_ratio': self._calculate_positive_quarters_ratio(period_df),
+            'positive_months_ratio': self._calculate_positive_months_ratio(period_df),
+            'positive_weeks_ratio': self._calculate_positive_weeks_ratio(period_df),
+            'quarterly_volatility': self._calculate_quarterly_volatility(period_df),
+            'monthly_volatility': self._calculate_monthly_volatility(period_df),
+            'weekly_volatility': self._calculate_weekly_volatility(period_df),
+            'annualized_return': self._calculate_annualized_return(period_df),
+            'max_drawdown': self._calculate_max_drawdown(period_df),
+            'second_max_drawdown': self._calculate_second_max_drawdown(period_df),
+            'sharpe_ratio': self._calculate_sharpe_ratio(period_df),
+            'calmar_ratio': self._calculate_calmar_ratio(period_df),
+            'ols_discrete_coefficient': self._calculate_ols_discrete_coefficient(period_df)
+        }
+        
+        return metrics
     
     def _get_establishment_years(self, establishment_date):
         """计算成立年数"""
@@ -361,6 +754,7 @@ class FundQuantAnalysisReport:
             # 获取基金申购状态数据
             purchase_row = fund_purchase_df[fund_purchase_df['基金代码'] == fund_code]
             if purchase_row.empty:
+                print(f"基金 {fund_code} 申购数据为空")
                 return None
             
             purchase_data = purchase_row.iloc[0]
@@ -368,20 +762,19 @@ class FundQuantAnalysisReport:
             # 获取基金基本面数据
             fundamental_row = fund_fundamental_df[fund_fundamental_df['基金代码'] == fund_code]
             
-            # 获取基金净值数据
-            nav_data = self._get_fund_nav_data(fund_code, start_date, end_date, hf)
+            # 获取完整的基金净值数据（不限制时间范围，以便计算各种时间周期的指标）
+            # 注意：这里直接获取完整数据，后面在各个指标计算函数中进行时间筛选
+            # 这样可以减少数据库访问次数
+            full_nav_data = self._get_fund_nav_data(fund_code, None, None, hf)
             
-            # 计算上涨比例指标
-            positive_quarters_ratio = None
-            positive_months_ratio = None
-            positive_weeks_ratio = None
+            # 调试信息
+            print(f"\n处理基金: {fund_code} - {purchase_data.get('基金简称', '')}")
+            print(f"基金净值数据状态: {'存在' if full_nav_data is not None else '不存在'}")
+            if full_nav_data is not None:
+                print(f"净值数据行数: {len(full_nav_data)}")
+                print(f"净值数据日期范围: {full_nav_data['date'].min()} 至 {full_nav_data['date'].max()}")
             
-            if nav_data is not None:
-                positive_quarters_ratio = self._calculate_positive_quarters_ratio(nav_data)
-                positive_months_ratio = self._calculate_positive_months_ratio(nav_data)
-                positive_weeks_ratio = self._calculate_positive_weeks_ratio(nav_data)
-            
-            # 构建基金数据字典
+            # 初始化所有指标为None
             fund_info = {
                 '基金代码': fund_code,
                 '基金简称': purchase_data.get('基金简称', ''),
@@ -390,9 +783,55 @@ class FundQuantAnalysisReport:
                 '期末日期': end_date.strftime('%Y-%m-%d'),
                 '基金规模': None,
                 '成立年数': None,
-                '上涨季度比例': positive_quarters_ratio,
-                '上涨月份比例': positive_months_ratio,
-                '上涨星期比例': positive_weeks_ratio,
+                '上涨季度比例': None,
+                '上涨月份比例': None,
+                '上涨星期比例': None,
+                '季涨跌幅标准差': None,
+                '月涨跌幅标准差': None,
+                '周涨跌幅标准差': None,
+                '年化收益率': None,
+                '最大回撤率': None,
+                '第二大回撤': None,
+                '夏普率': None,
+                '卡玛率': None,
+                'OLS离散系数': None,
+                '近3年上涨季度比例': None,
+                '近3年上涨月份比例': None,
+                '近3年上涨星期比例': None,
+                '近3年季涨跌幅标准差': None,
+                '近3年月涨跌幅标准差': None,
+                '近3年周涨跌幅标准差': None,
+                '近3年年化收益率': None,
+                '近3年最大回撤率': None,
+                '近3年第二大回撤': None,
+                '近3年夏普率': None,
+                '近3年卡玛率': None,
+                '近3年OLS离散系数': None,
+                '近1年上涨月份比例': None,
+                '近1年上涨星期比例': None,
+                '近1年月涨跌幅标准差': None,
+                '近1年周涨跌幅标准差': None,
+                '近1年年化收益率': None,
+                '近1年最大回撤率': None,
+                '近1年第二大回撤': None,
+                '近1年夏普率': None,
+                '近1年卡玛率': None,
+                '近1年OLS离散系数': None,
+                '前1月涨跌幅': None,
+                '前2月涨跌幅': None,
+                '前3月涨跌幅': None,
+                '前2季涨跌幅': None,
+                '前3季涨跌幅': None,
+                '前4季涨跌幅': None,
+                '近1周涨跌幅': None,
+                '近1月涨跌幅': None,
+                '近3月涨跌幅': None,
+                '近6月涨跌幅': None,
+                '近1年涨跌幅': None,
+                '2025年涨跌幅': None,
+                '2024年涨跌幅': None,
+                '月涨跌幅最大异常': None,
+                '近一月涨跌幅范围': None,
                 '封闭类型': self._map_closed_type(
                     purchase_data.get('申购状态', ''),
                     purchase_data.get('赎回状态', ''),
@@ -415,6 +854,141 @@ class FundQuantAnalysisReport:
                 '成立来分红': None,
                 '最近更新日期': None
             }
+            
+            # 如果有净值数据，计算所有指标
+            if full_nav_data is not None and len(full_nav_data) > 0:
+                # 筛选主时间范围内的数据
+                nav_data = full_nav_data[(full_nav_data['date'] >= start_date) & (full_nav_data['date'] <= end_date)]
+                print(f"主时间范围内数据行数: {len(nav_data)}")
+                
+                # 计算主时间范围的指标
+                if len(nav_data) >= 2:
+                    # 测试单个计算方法
+                    quarterly_volatility = self._calculate_quarterly_volatility(nav_data)
+                    print(f"季度涨跌幅标准差计算结果: {quarterly_volatility}")
+                    
+                    # 计算所有指标
+                    fund_info['上涨季度比例'] = self._calculate_positive_quarters_ratio(nav_data)
+                    fund_info['上涨月份比例'] = self._calculate_positive_months_ratio(nav_data)
+                    fund_info['上涨星期比例'] = self._calculate_positive_weeks_ratio(nav_data)
+                    fund_info['季涨跌幅标准差'] = quarterly_volatility
+                    fund_info['月涨跌幅标准差'] = self._calculate_monthly_volatility(nav_data)
+                    fund_info['周涨跌幅标准差'] = self._calculate_weekly_volatility(nav_data)
+                    fund_info['年化收益率'] = self._calculate_annualized_return(nav_data)
+                    fund_info['最大回撤率'] = self._calculate_max_drawdown(nav_data)
+                    fund_info['第二大回撤'] = self._calculate_second_max_drawdown(nav_data)
+                    fund_info['夏普率'] = self._calculate_sharpe_ratio(nav_data)
+                    fund_info['卡玛率'] = self._calculate_calmar_ratio(nav_data)
+                    fund_info['OLS离散系数'] = self._calculate_ols_discrete_coefficient(nav_data)
+                    
+                    # 输出部分计算结果用于调试
+                    print(f"年化收益率: {fund_info['年化收益率']}%")
+                    print(f"最大回撤率: {fund_info['最大回撤率']}%")
+                
+                # 计算近3年指标
+                three_year_metrics = self._calculate_period_metrics(full_nav_data, 1095)  # 3年 = 1095天
+                print(f"近3年指标计算结果: {'存在' if three_year_metrics else '不存在'}")
+                if three_year_metrics:
+                    fund_info['近3年上涨季度比例'] = three_year_metrics['positive_quarters_ratio']
+                    fund_info['近3年上涨月份比例'] = three_year_metrics['positive_months_ratio']
+                    fund_info['近3年上涨星期比例'] = three_year_metrics['positive_weeks_ratio']
+                    fund_info['近3年季涨跌幅标准差'] = three_year_metrics['quarterly_volatility']
+                    fund_info['近3年月涨跌幅标准差'] = three_year_metrics['monthly_volatility']
+                    fund_info['近3年周涨跌幅标准差'] = three_year_metrics['weekly_volatility']
+                    fund_info['近3年年化收益率'] = three_year_metrics['annualized_return']
+                    fund_info['近3年最大回撤率'] = three_year_metrics['max_drawdown']
+                    fund_info['近3年第二大回撤'] = three_year_metrics['second_max_drawdown']
+                    fund_info['近3年夏普率'] = three_year_metrics['sharpe_ratio']
+                    fund_info['近3年卡玛率'] = three_year_metrics['calmar_ratio']
+                    fund_info['近3年OLS离散系数'] = three_year_metrics['ols_discrete_coefficient']
+                
+                # 计算近1年指标
+                one_year_metrics = self._calculate_period_metrics(full_nav_data, 365)  # 1年 = 365天
+                print(f"近1年指标计算结果: {'存在' if one_year_metrics else '不存在'}")
+                if one_year_metrics:
+                    fund_info['近1年上涨月份比例'] = one_year_metrics['positive_months_ratio']
+                    fund_info['近1年上涨星期比例'] = one_year_metrics['positive_weeks_ratio']
+                    fund_info['近1年月涨跌幅标准差'] = one_year_metrics['monthly_volatility']
+                    fund_info['近1年周涨跌幅标准差'] = one_year_metrics['weekly_volatility']
+                    fund_info['近1年年化收益率'] = one_year_metrics['annualized_return']
+                    fund_info['近1年最大回撤率'] = one_year_metrics['max_drawdown']
+                    fund_info['近1年第二大回撤'] = one_year_metrics['second_max_drawdown']
+                    fund_info['近1年夏普率'] = one_year_metrics['sharpe_ratio']
+                    fund_info['近1年卡玛率'] = one_year_metrics['calmar_ratio']
+                    fund_info['近1年OLS离散系数'] = one_year_metrics['ols_discrete_coefficient']
+                
+                # 计算各种时间周期的涨跌幅
+                period_returns = self._calculate_period_returns(full_nav_data, ['1W', '1M', '3M', '6M', '1Y'])
+                print(f"时间周期涨跌幅计算结果: {period_returns}")
+                fund_info['近1周涨跌幅'] = period_returns.get('1W')
+                fund_info['近1月涨跌幅'] = period_returns.get('1M')
+                fund_info['近3月涨跌幅'] = period_returns.get('3M')
+                fund_info['近6月涨跌幅'] = period_returns.get('6M')
+                fund_info['近1年涨跌幅'] = period_returns.get('1Y')
+                
+                # 计算前N月涨跌幅
+                # 这里简化处理，使用近似天数计算
+                fund_info['前1月涨跌幅'] = period_returns.get('1M')
+                two_month_returns = self._calculate_period_returns(full_nav_data, ['2M'])
+                fund_info['前2月涨跌幅'] = two_month_returns.get('2M')
+                fund_info['前3月涨跌幅'] = period_returns.get('3M')
+                
+                # 计算前N季涨跌幅
+                try:
+                    # 首先尝试使用精确的季度数据计算
+                    if full_nav_data is not None and len(full_nav_data) >= 4 * 21:  # 假设每季度约21个交易日
+                        # 确保日期列是datetime类型
+                        if not pd.api.types.is_datetime64_any_dtype(full_nav_data['date']):
+                            full_nav_data['date'] = pd.to_datetime(full_nav_data['date'])
+                        
+                        # 获取最新日期
+                        latest_date = full_nav_data['date'].max()
+                        
+                        # 计算前2季（约6个月）
+                        two_quarters_ago = latest_date - pd.DateOffset(months=6)
+                        two_quarter_data = full_nav_data[full_nav_data['date'] >= two_quarters_ago]
+                        if len(two_quarter_data) >= 2:
+                            two_quarter_return = (two_quarter_data['close'].iloc[-1] / two_quarter_data['close'].iloc[0] - 1) * 100
+                            fund_info['前2季涨跌幅'] = round(two_quarter_return, 2)
+                        
+                        # 计算前3季（约9个月）
+                        three_quarters_ago = latest_date - pd.DateOffset(months=9)
+                        three_quarter_data = full_nav_data[full_nav_data['date'] >= three_quarters_ago]
+                        if len(three_quarter_data) >= 2:
+                            three_quarter_return = (three_quarter_data['close'].iloc[-1] / three_quarter_data['close'].iloc[0] - 1) * 100
+                            fund_info['前3季涨跌幅'] = round(three_quarter_return, 2)
+                        
+                        # 计算前4季（约12个月）
+                        four_quarters_ago = latest_date - pd.DateOffset(months=12)
+                        four_quarter_data = full_nav_data[full_nav_data['date'] >= four_quarters_ago]
+                        if len(four_quarter_data) >= 2:
+                            four_quarter_return = (four_quarter_data['close'].iloc[-1] / four_quarter_data['close'].iloc[0] - 1) * 100
+                            fund_info['前4季涨跌幅'] = round(four_quarter_return, 2)
+                except Exception as e:
+                    print(f"计算精确季度涨跌幅时出错: {e}，使用备用方法")
+                    
+                # 确保所有季度涨跌幅数据完整
+                six_month_returns = self._calculate_period_returns(full_nav_data, ['6M'])
+                nine_month_returns = self._calculate_period_returns(full_nav_data, ['9M'])
+                twelve_month_returns = self._calculate_period_returns(full_nav_data, ['12M'])
+                
+                # 强制使用备用方法确保数据完整性
+                fund_info['前2季涨跌幅'] = six_month_returns.get('6M')
+                fund_info['前3季涨跌幅'] = nine_month_returns.get('9M')
+                fund_info['前4季涨跌幅'] = twelve_month_returns.get('12M')
+                
+                # 计算年份涨跌幅
+                yearly_returns = self._calculate_yearly_returns(full_nav_data, [2024, 2025])
+                print(f"年份涨跌幅计算结果: {yearly_returns}")
+                fund_info['2024年涨跌幅'] = yearly_returns.get('2024')
+                fund_info['2025年涨跌幅'] = yearly_returns.get('2025')
+                
+                # 计算其他特殊指标
+                max_monthly_abnormal = self._calculate_max_monthly_abnormal(full_nav_data)
+                monthly_return_range = self._calculate_monthly_return_range(full_nav_data)
+                print(f"特殊指标计算结果 - 月涨跌幅最大异常: {max_monthly_abnormal}, 近一月涨跌幅范围: {monthly_return_range}")
+                fund_info['月涨跌幅最大异常'] = max_monthly_abnormal
+                fund_info['近一月涨跌幅范围'] = monthly_return_range
             
             # 补充基本面数据
             if not fundamental_row.empty:
@@ -473,7 +1047,7 @@ class FundQuantAnalysisReport:
         
         # 检查All_Fund_Data.h5文件是否存在
         if not os.path.exists(self.all_fund_data_path):
-            print(f"警告：{self.all_fund_data_path} 文件不存在，将无法计算上涨比例")
+            print(f"警告：{self.all_fund_data_path} 文件不存在，将无法计算量化指标")
             hf = None
         else:
             # 优化：一次性打开HDF5文件
@@ -488,11 +1062,51 @@ class FundQuantAnalysisReport:
         print("\n处理基金数据...")
         self.report_data = []
         
-        # 限制处理的基金数量，用于测试
-        # 生产环境可以注释掉这一行
-        fund_codes = fund_codes[:100]  # 仅处理前100只基金用于测试
+        # 检查是否为测试报表输出
+        is_test_report = False
+        if output_file and isinstance(output_file, str) and '测试报表' in output_file:
+            is_test_report = True
+            # 测试报表限制为5只基金
+            fund_codes = fund_codes[:5]
+            print(f"测试报表模式：仅处理前 5 只基金")
+        # 根据TEST_LIMIT属性决定处理数量
+        elif hasattr(self, 'TEST_LIMIT') and self.TEST_LIMIT is not None:
+            fund_codes = fund_codes[:self.TEST_LIMIT]
+            print(f"测试模式：仅处理前{self.TEST_LIMIT}只基金")
+        elif len(fund_codes) > 100:
+            # 默认限制100只基金
+            fund_codes = fund_codes[:100]
+            print("默认限制：仅处理前100只基金")
         
-        with ThreadPoolExecutor(max_workers=min(max_workers, 2)) as executor:  # 减少线程数避免过多的IO操作
+        # 优化：根据系统CPU核心数自动调整最佳线程数
+        try:
+            cpu_count = os.cpu_count() or 4  # 获取CPU核心数，默认为4
+            
+            # 对于IO密集型任务，可以设置比CPU核心数更多的线程
+            # 但也要避免过多线程导致的上下文切换开销
+            # 基本公式：CPU核心数 * 1.5 到 CPU核心数 * 3 之间
+            base_workers = max(2, cpu_count)  # 至少2个线程
+            max_recommended = max(cpu_count * 3, 8)  # 最多为CPU核心数的3倍或最少8个线程
+            
+            # 根据要处理的基金数量动态调整线程数
+            # 基金数量较少时使用较少线程
+            if len(fund_codes) <= 10:
+                optimal_workers = min(base_workers, 4)  # 少量基金时最多4个线程
+            elif len(fund_codes) <= 50:
+                optimal_workers = min(base_workers * 2, max_recommended)  # 中等数量时使用更多线程
+            else:
+                optimal_workers = min(base_workers * 3, max_recommended)  # 大量基金时使用最多线程
+            
+            print(f"系统CPU核心数: {cpu_count}")
+            print(f"根据系统配置和任务量，自动选择 {optimal_workers} 个工作线程进行处理")
+        except Exception as e:
+            # 异常情况下使用默认线程数
+            optimal_workers = 4
+            print(f"获取系统信息时出错: {e}，使用默认的4个工作线程")
+        
+        start_time = time.time()
+        
+        with ThreadPoolExecutor(max_workers=optimal_workers) as executor:
             # 创建任务
             future_to_fund = {
                 executor.submit(
@@ -524,10 +1138,13 @@ class FundQuantAnalysisReport:
             try:
                 hf.close()
                 print("已关闭All_Fund_Data.h5文件")
-            except:
-                pass
+            except Exception:
+                print("关闭HDF5文件时发生异常")
         
+        processing_time = time.time() - start_time
         print(f"\n成功处理 {len(self.report_data)} 只基金的数据")
+        print(f"处理时间: {processing_time:.2f} 秒")
+        print(f"平均每只基金处理时间: {processing_time / len(fund_codes):.2f} 秒")
         
         # 生成Excel报表
         if not self.report_data:
@@ -542,35 +1159,231 @@ class FundQuantAnalysisReport:
             # 创建DataFrame
             df = pd.DataFrame(self.report_data)
             
-            # 设置列顺序
+            # 设置列顺序（包含所有新增的表头，并添加单位）
             columns_order = [
                 '基金代码', '基金简称', '基金类型', '期初日期', '期末日期',
-                '基金规模', '成立年数', '上涨季度比例', '上涨月份比例', '上涨星期比例',
+                '基金规模(亿元)', '成立年数(年)', '上涨季度比例%', '上涨月份比例%', '上涨星期比例%',
+                '季涨跌幅标准差%', '月涨跌幅标准差%', '周涨跌幅标准差%', '年化收益率%', '最大回撤率%', 
+                '第二大回撤%', '夏普率', '卡玛率', 'OLS离散系数',
+                '近3年上涨季度比例%', '近3年上涨月份比例%', '近3年上涨星期比例%', '近3年季涨跌幅标准差%', 
+                '近3年月涨跌幅标准差%', '近3年周涨跌幅标准差%', '近3年年化收益率%', '近3年最大回撤率%', 
+                '近3年第二大回撤%', '近3年夏普率', '近3年卡玛率', '近3年OLS离散系数',
+                '近1年上涨月份比例%', '近1年上涨星期比例%', '近1年月涨跌幅标准差%', '近1年周涨跌幅标准差%', 
+                '近1年年化收益率%', '近1年最大回撤率%', '近1年第二大回撤%', '近1年夏普率', 
+                '近1年卡玛率', '近1年OLS离散系数',
+                '前1月涨跌幅%', '前2月涨跌幅%', '前3月涨跌幅%', '前2季涨跌幅%', '前3季涨跌幅%', '前4季涨跌幅%',
+                '近1周涨跌幅%', '近1月涨跌幅%', '近3月涨跌幅%', '近6月涨跌幅%', '近1年涨跌幅%',
+                '2025年涨跌幅%', '2024年涨跌幅%', '月涨跌幅最大异常%', '近一月涨跌幅范围%',
                 '封闭类型', '封闭长度', '状态', '基金买卖信息', '基金经理人',
-                '成立来分红', '最近更新日期'
+                '成立来分红(元)', '最近更新日期'
             ]
             
-            # 确保所有列都存在
-            for col in columns_order:
-                if col not in df.columns:
-                    df[col] = None
+            # 定义原列名到新列名的映射
+            column_mapping = {
+                '基金代码': '基金代码',
+                '基金简称': '基金简称',
+                '基金类型': '基金类型',
+                '期初日期': '期初日期',
+                '期末日期': '期末日期',
+                '基金规模': '基金规模(亿元)',
+                '成立年数': '成立年数(年)',
+                '上涨季度比例': '上涨季度比例%',
+                '上涨月份比例': '上涨月份比例%',
+                '上涨星期比例': '上涨星期比例%',
+                '季涨跌幅标准差': '季涨跌幅标准差%',
+                '月涨跌幅标准差': '月涨跌幅标准差%',
+                '周涨跌幅标准差': '周涨跌幅标准差%',
+                '年化收益率': '年化收益率%',
+                '最大回撤率': '最大回撤率%',
+                '第二大回撤': '第二大回撤%',
+                '夏普率': '夏普率',
+                '卡玛率': '卡玛率',
+                'OLS离散系数': 'OLS离散系数',
+                '近3年上涨季度比例': '近3年上涨季度比例%',
+                '近3年上涨月份比例': '近3年上涨月份比例%',
+                '近3年上涨星期比例': '近3年上涨星期比例%',
+                '近3年季涨跌幅标准差': '近3年季涨跌幅标准差%',
+                '近3年月涨跌幅标准差': '近3年月涨跌幅标准差%',
+                '近3年周涨跌幅标准差': '近3年周涨跌幅标准差%',
+                '近3年年化收益率': '近3年年化收益率%',
+                '近3年最大回撤率': '近3年最大回撤率%',
+                '近3年第二大回撤': '近3年第二大回撤%',
+                '近3年夏普率': '近3年夏普率',
+                '近3年卡玛率': '近3年卡玛率',
+                '近3年OLS离散系数': '近3年OLS离散系数',
+                '近1年上涨月份比例': '近1年上涨月份比例%',
+                '近1年上涨星期比例': '近1年上涨星期比例%',
+                '近1年月涨跌幅标准差': '近1年月涨跌幅标准差%',
+                '近1年周涨跌幅标准差': '近1年周涨跌幅标准差%',
+                '近1年年化收益率': '近1年年化收益率%',
+                '近1年最大回撤率': '近1年最大回撤率%',
+                '近1年第二大回撤': '近1年第二大回撤%',
+                '近1年夏普率': '近1年夏普率',
+                '近1年卡玛率': '近1年卡玛率',
+                '近1年OLS离散系数': '近1年OLS离散系数',
+                '前1月涨跌幅': '前1月涨跌幅%',
+                '前2月涨跌幅': '前2月涨跌幅%',
+                '前3月涨跌幅': '前3月涨跌幅%',
+                '前2季涨跌幅': '前2季涨跌幅%',
+                '前3季涨跌幅': '前3季涨跌幅%',
+                '前4季涨跌幅': '前4季涨跌幅%',
+                '近1周涨跌幅': '近1周涨跌幅%',
+                '近1月涨跌幅': '近1月涨跌幅%',
+                '近3月涨跌幅': '近3月涨跌幅%',
+                '近6月涨跌幅': '近6月涨跌幅%',
+                '近1年涨跌幅': '近1年涨跌幅%',
+                '2025年涨跌幅': '2025年涨跌幅%',
+                '2024年涨跌幅': '2024年涨跌幅%',
+                '月涨跌幅最大异常': '月涨跌幅最大异常%',
+                '近一月涨跌幅范围': '近一月涨跌幅范围%',
+                '封闭类型': '封闭类型',
+                '封闭长度': '封闭长度',
+                '状态': '状态',
+                '基金买卖信息': '基金买卖信息',
+                '基金经理人': '基金经理人',
+                '成立来分红': '成立来分红(元)',
+                '最近更新日期': '最近更新日期'
+            }
+            
+            # 转换列名并处理数值数据
+            new_df = pd.DataFrame()
+            # 定义需要强制保留两位小数的列名列表 - 按照用户要求的31项
+            force_numeric_columns = [
+                '季涨跌幅标准差%', '月涨跌幅标准差%', '周涨跌幅标准差%', '年化收益率%', '最大回撤率%', 
+                '第二大回撤%', '夏普率', '卡玛率', 'OLS离散系数', 
+                '近3年季涨跌幅标准差%', '近3年月涨跌幅标准差%', '近3年周涨跌幅标准差%', '近3年年化收益率%', 
+                '近3年最大回撤率%', '近3年第二大回撤%', '近3年夏普率', '近3年卡玛率', '近3年OLS离散系数', 
+                '近1年月涨跌幅标准差%', '近1年周涨跌幅标准差%', '近1年年化收益率%', '近1年最大回撤率%', 
+                '近1年第二大回撤%', '近1年夏普率', '近1年卡玛率', '近1年OLS离散系数', 
+                '前1月涨跌幅%', '前2月涨跌幅%', '前3月涨跌幅%', '前2季涨跌幅%', '前3季涨跌幅%', '前4季涨跌幅%', 
+                '近1周涨跌幅%', '近1月涨跌幅%', '近3月涨跌幅%', '近6月涨跌幅%', '近1年涨跌幅%',
+                '2025年涨跌幅%', '2024年涨跌幅%', '月涨跌幅最大异常%', '近一月涨跌幅范围%'
+            ]
+            
+            for old_col, new_col in column_mapping.items():
+                if old_col in df.columns:
+                    # 处理所有可能的数值列，确保统一保留两位小数
+                    try:
+                        # 先尝试直接转换为数值
+                        numeric_series = pd.to_numeric(df[old_col], errors='coerce')
+                        
+                        # 检查是否存在非空的数值
+                        if numeric_series.notna().any():
+                            # 对数值列应用round(2)
+                            new_df[new_col] = numeric_series.round(2)
+                        else:
+                            # 如果没有成功转换为数值，尝试第二种方法：先转为字符串再处理
+                            try:
+                                # 尝试处理可能的字符串数值（如带百分号的字符串）
+                                str_series = df[old_col].astype(str)
+                                # 移除百分号并转换为数值
+                                clean_series = str_series.str.replace('%', '').str.strip()
+                                numeric_series_alt = pd.to_numeric(clean_series, errors='coerce')
+                                
+                                if numeric_series_alt.notna().any():
+                                    new_df[new_col] = numeric_series_alt.round(2)
+                                else:
+                                    # 如果仍然无法转换为数值，检查是否在强制数值列表中
+                                    if new_col in force_numeric_columns:
+                                        # 即使无法转换，也设置为空数值而不是原始值
+                                        new_df[new_col] = pd.Series([None] * len(df))
+                                    else:
+                                        # 非强制数值列，使用原始值
+                                        new_df[new_col] = df[old_col]
+                            except:
+                                # 发生异常时，检查是否在强制数值列表中
+                                if new_col in force_numeric_columns:
+                                    new_df[new_col] = pd.Series([None] * len(df))
+                                else:
+                                    new_df[new_col] = df[old_col]
+                    except Exception as e:
+                        # 发生异常时，检查是否在强制数值列表中
+                        print(f"处理列 {old_col} -> {new_col} 时出错: {e}")
+                        if new_col in force_numeric_columns:
+                            new_df[new_col] = pd.Series([None] * len(df))
+                        else:
+                            new_df[new_col] = df[old_col]
+                else:
+                    # 列不存在时，检查是否在强制数值列表中
+                    if new_col in force_numeric_columns:
+                        new_df[new_col] = pd.Series([None] * len(df))
+                    else:
+                        new_df[new_col] = None
+            
+            # 第二遍处理：确保所有force_numeric_columns中的列都正确格式化为两位小数
+            for col in force_numeric_columns:
+                if col in new_df.columns:
+                    try:
+                        # 再次尝试确保数值格式
+                        if new_df[col].notna().any():
+                            # 转换为数值并保留两位小数
+                            numeric_series = pd.to_numeric(new_df[col], errors='coerce')
+                            # 使用更严格的格式化方法确保两位小数
+                            new_df[col] = numeric_series.apply(lambda x: float(f"{x:.2f}") if pd.notna(x) else x)
+                        else:
+                            # 如果全部为空，保持原样
+                            pass
+                    except Exception as e:
+                        print(f"格式化列 {col} 时出错: {e}")
+                        # 保持原值
+                        pass
             
             # 重新排序列
-            df = df[columns_order]
+            df = new_df[columns_order]
             
-            # 设置输出文件名
-            if output_file is None:
+            # 设置输出文件名，确保总是有有效的输出路径
+            if output_file is None or not output_file or not isinstance(output_file, str):
+                # 当output_file为空、None或不是字符串时，使用默认路径
                 timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
                 output_file = os.path.join(
                     self.base_dir, 
                     'reports', 
                     f'基金量化分析报表_{timestamp}.xlsx'
                 )
+            else:
+                # 确保输出到reports文件夹
+                if not os.path.isabs(output_file) and not output_file.startswith('reports'):
+                    output_file = os.path.join(self.base_dir, 'reports', output_file)
+                elif os.path.isabs(output_file):
+                    # 绝对路径情况下，如果不是reports文件夹，则移动到reports文件夹
+                    if 'reports' not in output_file:
+                        # 提取文件名部分
+                        filename = os.path.basename(output_file)
+                        output_file = os.path.join(self.base_dir, 'reports', filename)
+                
+                # 测试报表添加时间戳
+                if '测试报表' in output_file and '_' not in os.path.basename(output_file).split('.')[0]:
+                    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+                    filename = os.path.basename(output_file)
+                    name_without_ext = os.path.splitext(filename)[0]
+                    output_file = os.path.join(
+                        os.path.dirname(output_file),
+                        f'{name_without_ext}_{timestamp}.xlsx'
+                    )
+                
+                # 验证用户指定的路径，确保是有效的Excel文件
+                if not output_file.endswith(('.xlsx', '.xls')):
+                    # 如果没有指定扩展名，添加.xlsx
+                    output_file += '.xlsx'
             
             # 确保输出目录存在
-            output_dir = os.path.dirname(output_file)
-            if not os.path.exists(output_dir):
-                os.makedirs(output_dir)
+            try:
+                output_dir = os.path.dirname(output_file)
+                # 如果output_dir为空（即只有文件名没有路径），使用当前目录
+                if not output_dir:
+                    output_dir = os.getcwd()
+                    output_file = os.path.join(output_dir, os.path.basename(output_file))
+                
+                if not os.path.exists(output_dir):
+                    os.makedirs(output_dir, exist_ok=True)
+                    print(f"已创建输出目录: {output_dir}")
+            except Exception as e:
+                print(f"创建输出目录时出错: {e}")
+                # 使用当前目录作为备选
+                output_dir = os.getcwd()
+                timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+                output_file = os.path.join(output_dir, f'基金量化分析报表_{timestamp}.xlsx')
+                print(f"使用备选输出路径: {output_file}")
             
             # 保存到Excel
             with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
@@ -600,6 +1413,26 @@ class FundQuantAnalysisReport:
     def interactive_menu(self):
         """交互式菜单"""
         print("\n=== 基金量化分析报表生成器 ===")
+        
+        # 添加报表类型选择
+        while True:
+            print("\n请选择操作:")
+            print("1、生成完整的量化基金分析报表")
+            print("2、生成5个基金的量化报表测试程序")
+            
+            choice = input("请输入选择 (1 或 2): ").strip()
+            
+            if choice in ['1', '2']:
+                # 设置测试限制
+                if choice == '1':
+                    self.TEST_LIMIT = None  # 不限制数量
+                    print("将生成完整的量化基金分析报表")
+                else:
+                    self.TEST_LIMIT = 5  # 仅处理5只基金用于测试
+                    print("将生成5个基金的量化报表测试程序")
+                break
+            else:
+                print("无效的选择，请重新输入")
         
         # 获取用户输入的日期
         start_date_str = input("请输入期初日期 (YYYY-MM-DD，默认为1年前): ").strip()

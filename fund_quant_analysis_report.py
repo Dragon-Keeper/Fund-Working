@@ -776,7 +776,7 @@ class FundQuantAnalysisReport:
             
             # 初始化所有指标为None
             fund_info = {
-                '基金代码': fund_code,
+                '基金代码': str(fund_code),  # 确保基金代码始终为字符串类型
                 '基金简称': purchase_data.get('基金简称', ''),
                 '基金类型': purchase_data.get('基金类型', ''),
                 '期初日期': start_date.strftime('%Y-%m-%d'),
@@ -1043,6 +1043,8 @@ class FundQuantAnalysisReport:
         
         # 获取所有基金代码
         fund_codes = fund_purchase_df['基金代码'].unique()
+        # 确保基金代码为字符串类型
+        fund_codes = [str(code) for code in fund_codes]
         print(f"共找到 {len(fund_codes)} 只基金")
         
         # 检查All_Fund_Data.h5文件是否存在
@@ -1159,6 +1161,10 @@ class FundQuantAnalysisReport:
             # 创建DataFrame
             df = pd.DataFrame(self.report_data)
             
+            # 确保基金代码列始终为字符串类型，保留前导零
+            if '基金代码' in df.columns:
+                df['基金代码'] = df['基金代码'].astype(str)
+            
             # 设置列顺序（包含所有新增的表头，并添加单位）
             columns_order = [
                 '基金代码', '基金简称', '基金类型', '期初日期', '期末日期',
@@ -1262,6 +1268,11 @@ class FundQuantAnalysisReport:
             
             for old_col, new_col in column_mapping.items():
                 if old_col in df.columns:
+                    # 基金代码列特殊处理，保持为字符串类型
+                    if old_col == '基金代码':
+                        new_df[new_col] = df[old_col].astype(str)
+                        continue
+                    
                     # 处理所有可能的数值列，确保统一保留两位小数
                     try:
                         # 先尝试直接转换为数值
@@ -1389,8 +1400,16 @@ class FundQuantAnalysisReport:
             with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
                 df.to_excel(writer, sheet_name='基金量化分析', index=False)
                 
-                # 设置列宽
+                # 设置列宽和格式
                 worksheet = writer.sheets['基金量化分析']
+                
+                # 设置基金代码列为文本格式，保留前导零
+                if '基金代码' in df.columns:
+                    fund_code_col = df.columns.get_loc('基金代码') + 1  # +1 因为Excel列从1开始
+                    for row in range(2, worksheet.max_row + 1):  # 从第2行开始，跳过标题行
+                        cell = worksheet.cell(row=row, column=fund_code_col)
+                        cell.number_format = '@'  # 设置为文本格式
+                
                 for column in worksheet.columns:
                     max_length = 0
                     column_letter = column[0].column_letter
@@ -1402,6 +1421,19 @@ class FundQuantAnalysisReport:
                             pass
                     adjusted_width = min(max_length + 2, 50)
                     worksheet.column_dimensions[column_letter].width = adjusted_width
+            
+            # 验证Excel文件中的基金代码格式
+            print("\n验证Excel文件中的基金代码格式...")
+            try:
+                # 使用字符串类型读取基金代码列
+                verify_df = pd.read_excel(output_file, dtype={'基金代码': str})
+                print("基金代码列的前5个值:")
+                print(verify_df['基金代码'].head())
+                print("基金代码列的数据类型:", verify_df['基金代码'].dtype)
+                print("\n注意：当使用pandas读取此Excel文件时，请使用以下参数以确保基金代码列保留前导零：")
+                print("pd.read_excel('文件路径', dtype={'基金代码': str})")
+            except Exception as e:
+                print(f"验证Excel文件时出错: {e}")
             
             print(f"\n报表已成功生成: {output_file}")
             return True

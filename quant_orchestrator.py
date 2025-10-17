@@ -361,6 +361,7 @@ def show_main_menu():
     print("5. 生成Excel报表")
     print("6. 通达信转换功能")
     print("7. 量化分析功能")
+    print("8. 强化版量化分析功能")
     print("0. 退出系统")
 
 
@@ -424,6 +425,18 @@ def show_quant_analysis_menu(*args, **kwargs):
         subprocess.run([sys.executable, "quant_analysis.py"], check=True)
     except subprocess.CalledProcessError as e:
         print(f"量化分析模块运行失败: {str(e)}")
+    # 移除按键确认环节
+
+
+def show_enhanced_quant_analysis_menu(*args, **kwargs):
+    """强化版量化分析菜单"""
+    print("\n=== 启动强化版量化分析系统 ===")
+    print("正在启动强化版量化分析模块...")
+    try:
+        # 直接运行fund_quant_analysis_report.py脚本，允许用户交互
+        subprocess.run([sys.executable, "fund_quant_analysis_report.py"], check=False)
+    except Exception as e:
+        print(f"强化版量化分析模块运行失败: {str(e)}")
     # 移除按键确认环节
 
 
@@ -680,6 +693,10 @@ def main():
             elif choice == "7":
                 # 量化分析功能
                 show_quant_analysis_menu(orchestrator)
+
+            elif choice == "8":
+                # 强化版量化分析功能
+                show_enhanced_quant_analysis_menu(orchestrator)
 
             elif choice == "0":
                 print("谢谢使用基金数据管理系统，再见!")

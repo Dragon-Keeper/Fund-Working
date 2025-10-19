@@ -67,9 +67,23 @@ def get_cache_path():
         os.makedirs(cache_path)
     return cache_path
 
+# 导入优化的索引管理器
+try:
+    from fund_index_optimizer import FundIndexManager, get_fund_index_manager
+    INDEX_OPTIMIZER_AVAILABLE = True
+except ImportError:
+    INDEX_OPTIMIZER_AVAILABLE = False
+    print("警告: 无法导入索引优化器，将使用默认索引机制")
+
 # 创建基金代码索引
 def create_fund_index(storage_file):
     """创建基金代码索引，加速查询"""
+    # 如果优化器可用，使用优化版本
+    if INDEX_OPTIMIZER_AVAILABLE:
+        manager = get_fund_index_manager(storage_file)
+        return manager.get_index()
+    
+    # 否则使用原始版本
     index_file = os.path.join(get_cache_path(), "fund_index.pkl")
     
     # 检查索引文件是否存在
@@ -126,6 +140,12 @@ def create_fund_index(storage_file):
 # 获取基金代码索引
 def get_fund_index(storage_file):
     """获取基金代码索引"""
+    # 如果优化器可用，使用优化版本
+    if INDEX_OPTIMIZER_AVAILABLE:
+        manager = get_fund_index_manager(storage_file)
+        return manager.get_index()
+    
+    # 否则使用原始版本
     return create_fund_index(storage_file)
 
 # 计算查询哈希值，用于缓存
@@ -192,6 +212,22 @@ def read_fund_data_vectorized(storage_file, stock_code):
 # 获取基金基本信息（使用索引）
 def get_fund_info_indexed(storage_file, stock_code):
     """获取基金基本信息（使用索引）"""
+    # 如果优化器可用，使用优化版本
+    if INDEX_OPTIMIZER_AVAILABLE:
+        manager = get_fund_index_manager(storage_file)
+        fund_info = manager.get_fund_info(stock_code)
+        
+        if fund_info:
+            return {
+                'stock_code': stock_code,
+                'record_count': fund_info['record_count'],
+                'first_date': fund_info['first_date'],
+                'last_date': fund_info['last_date']
+            }
+        else:
+            return None
+    
+    # 否则使用原始版本
     # 获取索引
     index = get_fund_index(storage_file)
     
@@ -208,6 +244,12 @@ def get_fund_info_indexed(storage_file, stock_code):
 # 获取所有基金代码（使用索引）
 def get_all_fund_codes_indexed(storage_file):
     """获取所有基金代码（使用索引）"""
+    # 如果优化器可用，使用优化版本
+    if INDEX_OPTIMIZER_AVAILABLE:
+        manager = get_fund_index_manager(storage_file)
+        return manager.get_fund_codes()
+    
+    # 否则使用原始版本
     # 获取索引
     index = get_fund_index(storage_file)
     return list(index.keys())
